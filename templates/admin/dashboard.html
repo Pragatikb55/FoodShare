@@ -3,13 +3,33 @@
 {% block content %}
 <div class="row mb-4">
     <div class="col-md-12">
-        <div class="alert alert-info" role="alert">
-            <i class="bi bi-shield-lock"></i> 
-            <strong>Admin Panel:</strong> Welcome back, <strong>{{ admin.full_name or admin.username }}</strong>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'info' if category == 'info' else 'warning' if category == 'warning' else 'danger' }} alert-dismissible fade show" role="alert">
+                        <i class="bi bi-{{ 'check-circle' if category == 'success' else 'info-circle' if category == 'info' else 'exclamation-triangle' if category == 'warning' else 'x-circle' }}"></i> 
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                <h1 class="h2 mb-0"><i class="bi bi-speedometer2"></i> Admin Dashboard</h1>
+                <p class="text-muted mb-0">Welcome back, <strong>{{ admin.full_name or admin.username }}</strong></p>
+            </div>
+            <div>
+                <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-danger">
+                    <i class="bi bi-box-arrow-right"></i> Admin Logout
+                </a>
+            </div>
         </div>
-        <h1 class="h2"><i class="bi bi-speedometer2"></i> Admin Dashboard</h1>
     </div>
 </div>
+
+<!-- Statistics Cards -->
 <div class="row mb-4">
     <div class="col-md-3">
         <div class="card border-primary">
@@ -44,51 +64,35 @@
         </div>
     </div>
 </div>
+
+<!-- Quick Actions and Chart -->
 <div class="row">
-    <div class="col-md-6">
+    <div class="col-md-4">
         <div class="card">
             <div class="card-body">
                 <h5 class="card-title">Quick Actions</h5>
-                <ul class="list-group">
-                    <li class="list-group-item"><a href="{{ url_for('admin_users') }}">Manage Users</a></li>
-                    <li class="list-group-item"><a href="{{ url_for('admin_listings') }}">Manage Listings</a></li>
-                    <li class="list-group-item"><a href="{{ url_for('export_data') }}">Export CSV</a></li>
-                </ul>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-body">
-                <h5 class="card-title">Recent Activity</h5>
-                <!-- Chart.js can be added here -->
-                <canvas id="myChart"></canvas>
+                <div class="list-group list-group-flush">
+                    <a href="{{ url_for('admin_users') }}" class="list-group-item list-group-item-action">
+                        <i class="bi bi-people"></i> Manage Users
+                    </a>
+                    <a href="{{ url_for('admin_listings') }}" class="list-group-item list-group-item-action">
+                        <i class="bi bi-box"></i> Manage Listings
+                    </a>
+                    <a href="{{ url_for('admin_claims') }}" class="list-group-item list-group-item-action">
+                        <i class="bi bi-hand-index"></i> Manage Claims
+                    </a>
+                    <a href="{{ url_for('admin_notifications') }}" class="list-group-item list-group-item-action">
+                        <i class="bi bi-bell"></i> Notifications
+                    </a>
+                    <a href="{{ url_for('admin_reports') }}" class="list-group-item list-group-item-action">
+                        <i class="bi bi-graph-up"></i> Reports & Analytics
+                    </a>
+                    <a href="{{ url_for('export_data') }}" class="list-group-item list-group-item-action">
+                        <i class="bi bi-download"></i> Export CSV
+                    </a>
+                </div>
             </div>
         </div>
     </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-    // Example chart - replace with real data
-    const ctx = document.getElementById('myChart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: ['Jan', 'Feb', 'Mar'],
-            datasets: [{
-                label: 'Donations',
-                data: [12, 19, 3],
-                backgroundColor: 'rgba(40, 167, 69, 0.5)'
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'bottom',
-                }
-            }
-        }
-    });
-</script>
 {% endblock %}

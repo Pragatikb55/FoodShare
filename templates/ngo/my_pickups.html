@@ -1,0 +1,525 @@
+{% extends "base.html" %}
+
+{% block title %}My Pickups - FoodShare{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pickup-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        border-left: 4px solid #007bff;
+    }
+    
+    .pickup-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+    
+    .urgent-pickup {
+        border-left: 4px solid #dc3545;
+        animation: pulse 2s infinite;
+    }
+    
+    .status-badge {
+        font-size: 0.8em;
+        padding: 4px 8px;
+    }
+    
+    .countdown {
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+    }
+    
+    .countdown.urgent {
+        color: #dc3545;
+        animation: blink 1s infinite;
+    }
+    
+    .countdown.warning {
+        color: #fd7e14;
+    }
+    
+    .countdown.normal {
+        color: #28a745;
+    }
+    
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+    }
+    
+    @keyframes blink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0.3; }
+    }
+    
+    .map-container {
+        height: 200px;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .directions-btn {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.9em;
+        transition: all 0.3s ease;
+    }
+    
+    .directions-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+    }
+    
+    .otp-section {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 8px;
+        padding: 15px;
+    }
+    
+    .otp-input {
+        font-size: 1.5em;
+        text-align: center;
+        letter-spacing: 5px;
+        max-width: 200px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="h2">My Pickups</h1>
+        <p class="text-muted">Manage your active food pickups and track their status.</p>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center py-3">
+                <h6 class="mb-0">Active Pickups</h6>
+                <h3 class="mb-0 text-success">{{ active_pickups|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center py-3">
+                <h6 class="mb-0">Pending Confirmation</h6>
+                <h3 class="mb-0 text-warning">{{ pending_pickups|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center py-3">
+                <h6 class="mb-0">Ready for Pickup</h6>
+                <h3 class="mb-0 text-info">{{ ready_pickups|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center py-3">
+                <h6 class="mb-0">Completed Today</h6>
+                <h3 class="mb-0 text-primary">{{ completed_today|length }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Pickups -->
+<div class="row" id="pickupsList">
+    {% for claim in active_pickups %}
+    {% set hours_left = ((claim.food_listing.pickup_end - datetime.utcnow()).total_seconds() / 3600)|round|int %}
+    {% set minutes_left = ((claim.food_listing.pickup_end - datetime.utcnow()).total_seconds() / 60)|round|int %}
+    <div class="col-md-6 col-lg-4 mb-4 pickup-item" 
+         data-claim-id="{{ claim.id }}"
+         data-expiry="{{ minutes_left }}"
+         data-status="{{ claim.status }}">
+        <div class="card h-100 pickup-card {% if hours_left < 2 %}urgent-pickup{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="badge status-badge 
+                    {% if claim.status == 'pending' %}bg-warning
+                    {% elif claim.status == 'confirmed' %}bg-info
+                    {% elif claim.status == 'picked_up' %}bg-success
+                    {% endif %}">
+                    {{ claim.status|title }}
+                </span>
+                <div class="countdown {% if minutes_left < 30 %}urgent{% elif minutes_left < 120 %}warning{% else %}normal{% endif %}" 
+                     id="countdown-{{ claim.id }}">
+                    Loading...
+                </div>
+            </div>
+            
+            <div class="card-body">
+                <h5 class="card-title">{{ claim.food_listing.title }}</h5>
+                <p class="text-muted small mb-3">
+                    <i class="bi bi-building"></i> {{ claim.food_listing.donor.organization or claim.food_listing.donor.username }}
+                </p>
+                
+                <div class="mb-3">
+                    <p class="card-text">
+                        <i class="bi bi-geo-alt"></i> {{ claim.food_listing.location }}
+                        {% if claim.food_listing.pickup_address %}
+                        <br><small class="text-muted">{{ claim.food_listing.pickup_address[:80] }}{% if claim.food_listing.pickup_address|length > 80 %}...{% endif %}</small>
+                        {% endif %}
+                    </p>
+                    
+                    <!-- Interactive Map -->
+                    {% if claim.food_listing.latitude and claim.food_listing.longitude %}
+                    <div class="map-container mb-2" id="map-{{ claim.id }}" 
+                         data-lat="{{ claim.food_listing.latitude }}" 
+                         data-lon="{{ claim.food_listing.longitude }}">
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button class="directions-btn" onclick="getDirections({{ claim.food_listing.latitude }}, {{ claim.food_listing.longitude }}, '{{ claim.food_listing.location|replace("'", "\'") }}')">
+                            <i class="bi bi-navigation"></i> Get Directions
+                        </button>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> Location coordinates not available
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <div class="border rounded p-2 text-center">
+                            <small class="d-block text-muted">Quantity</small>
+                            <strong>{{ claim.food_listing.quantity }} meals</strong>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="border rounded p-2 text-center">
+                            <small class="d-block text-muted">Pickup By</small>
+                            <strong>{{ claim.food_listing.pickup_end.strftime('%I:%M %p') }}</strong>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if claim.notes %}
+                <div class="mb-3">
+                    <small class="text-muted">Notes: {{ claim.notes }}</small>
+                </div>
+                {% endif %}
+                
+                <!-- OTP Section for Confirmed Pickups -->
+                {% if claim.status == 'confirmed' %}
+                <div class="otp-section">
+                    <h6 class="mb-3">Ready for Pickup - OTP Verification</h6>
+                    <p class="small text-muted mb-3">Ask the donor for the 4-digit OTP code to complete pickup.</p>
+                    <div class="input-group mb-3">
+                        <input type="text" class="form-control otp-input" 
+                               id="otp-{{ claim.id }}" 
+                               maxlength="4" 
+                               placeholder="0000"
+                               pattern="[0-9]{4}">
+                        <button class="btn btn-success" onclick="verifyOTP({{ claim.id }})">
+                            <i class="bi bi-check-circle"></i> Verify OTP
+                        </button>
+                    </div>
+                    <div id="otp-message-{{ claim.id }}" class="small"></div>
+                </div>
+                {% endif %}
+                
+                <!-- Action Buttons -->
+                <div class="d-grid gap-2">
+                    {% if claim.status == 'pending' %}
+                    <button class="btn btn-info" onclick="confirmPickup({{ claim.id }})">
+                        <i class="bi bi-check2"></i> Confirm Pickup
+                    </button>
+                    {% elif claim.status == 'confirmed' %}
+                    <button class="btn btn-outline-secondary" onclick="viewDetails({{ claim.id }})">
+                        <i class="bi bi-info-circle"></i> View Details
+                    </button>
+                    {% endif %}
+                    
+                    <button class="btn btn-outline-primary" onclick="showMap({{ claim.food_listing.latitude }}, {{ claim.food_listing.longitude }})">
+                        <i class="bi bi-map"></i> Get Directions
+                    </button>
+                    
+                    <button class="btn btn-outline-warning" onclick="contactDonor({{ claim.food_listing.donor.id }})">
+                        <i class="bi bi-telephone"></i> Contact Donor
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if not active_pickups %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-box-seam display-4 text-muted mb-3"></i>
+                <h4>No Active Pickups</h4>
+                <p class="text-muted mb-4">You don't have any active pickups at the moment.</p>
+                <a href="{{ url_for('available_food') }}" class="btn btn-warning">
+                    <i class="bi bi-search"></i> Browse Available Food
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Contact Donor Modal -->
+<div class="modal fade" id="contactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Contact Donor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="contactModalBody">
+                <!-- Contact details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+let currentClaimId = null;
+let maps = {};
+
+// Initialize maps when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeAllMaps();
+});
+
+function initializeAllMaps() {
+    document.querySelectorAll('.map-container').forEach(mapElement => {
+        const lat = parseFloat(mapElement.getAttribute('data-lat'));
+        const lon = parseFloat(mapElement.getAttribute('data-lon'));
+        const mapId = mapElement.id;
+        
+        if (lat && lon && !maps[mapId]) {
+            try {
+                const map = L.map(mapId).setView([lat, lon], 15);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 18
+                }).addTo(map);
+                
+                const marker = L.marker([lat, lon]).addTo(map);
+                marker.bindPopup('<strong>Pickup Location</strong><br>Click "Get Directions" for navigation').openPopup();
+                
+                maps[mapId] = map;
+                
+                // Fix map display after a short delay
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
+                
+            } catch (error) {
+                console.error('Error initializing map:', error);
+                mapElement.innerHTML = '<div class="alert alert-warning">Map unavailable</div>';
+            }
+        }
+    });
+}
+
+// Get directions using Google Maps
+function getDirections(lat, lon, location) {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+    window.open(url, '_blank');
+}
+
+// Countdown timer functionality
+function updateCountdowns() {
+    document.querySelectorAll('.pickup-item').forEach(item => {
+        const claimId = item.getAttribute('data-claim-id');
+        const expiryMinutes = parseInt(item.getAttribute('data-expiry'));
+        const countdownElement = document.getElementById(`countdown-${claimId}`);
+        
+        if (countdownElement && expiryMinutes > 0) {
+            const now = new Date();
+            const expiryTime = new Date(now.getTime() + expiryMinutes * 60000);
+            const timeDiff = expiryTime - now;
+            
+            if (timeDiff > 0) {
+                const hours = Math.floor(timeDiff / (1000 * 60 * 60));
+                const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+                
+                let timeString = '';
+                if (hours > 0) {
+                    timeString = `${hours}h ${minutes}m`;
+                } else {
+                    timeString = `${minutes}m ${seconds}s`;
+                }
+                
+                countdownElement.textContent = timeString;
+                
+                // Update urgency styling
+                countdownElement.className = 'countdown';
+                if (timeDiff < 30 * 60 * 1000) { // Less than 30 minutes
+                    countdownElement.classList.add('urgent');
+                } else if (timeDiff < 2 * 60 * 60 * 1000) { // Less than 2 hours
+                    countdownElement.classList.add('warning');
+                } else {
+                    countdownElement.classList.add('normal');
+                }
+            } else {
+                countdownElement.textContent = 'Expired';
+                countdownElement.className = 'countdown urgent';
+            }
+        }
+    });
+}
+
+// Update countdowns every second
+setInterval(updateCountdowns, 1000);
+updateCountdowns(); // Initial call
+
+// Confirm pickup function
+function confirmPickup(claimId) {
+    if (confirm('Are you sure you want to confirm this pickup? This will let the donor know you are coming.')) {
+        fetch(`/claim/${claimId}/update_status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                status: 'confirmed',
+                notes: 'Confirmed pickup - on the way'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while confirming pickup.');
+        });
+    }
+}
+
+// Verify OTP function
+function verifyOTP(claimId) {
+    const otpInput = document.getElementById(`otp-${claimId}`);
+    const messageDiv = document.getElementById(`otp-message-${claimId}`);
+    const otp = otpInput.value.trim();
+    
+    if (!otp || otp.length !== 4 || !/^\d{4}$/.test(otp)) {
+        messageDiv.innerHTML = '<div class="text-danger">Please enter a valid 4-digit OTP.</div>';
+        return;
+    }
+    
+    messageDiv.innerHTML = '<div class="text-info">Verifying OTP...</div>';
+    
+    fetch(`/claim/${claimId}/verify_otp`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            otp: otp
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            messageDiv.innerHTML = '<div class="text-success">✅ OTP verified! Pickup completed successfully.</div>';
+            setTimeout(() => {
+                location.reload();
+            }, 2000);
+        } else {
+            messageDiv.innerHTML = '<div class="text-danger">❌ Invalid OTP. Please try again.</div>';
+            otpInput.value = '';
+            otpInput.focus();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        messageDiv.innerHTML = '<div class="text-danger">An error occurred. Please try again.</div>';
+    });
+}
+
+// View pickup details
+function viewDetails(claimId) {
+    window.open(`/claim/${claimId}/view`, '_blank');
+}
+
+// Show map location
+function showMap(lat, lon) {
+    if (lat && lon) {
+        window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`, '_blank');
+    } else {
+        alert('Location coordinates not available.');
+    }
+}
+
+// Contact donor function
+function contactDonor(donorId) {
+    const modal = new bootstrap.Modal(document.getElementById('contactModal'));
+    const modalBody = document.getElementById('contactModalBody');
+    
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div></div>';
+    
+    fetch(`/api/user/${donorId}/contact`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            modalBody.innerHTML = `
+                <div class="text-center">
+                    <h6>${data.user.organization || data.user.username}</h6>
+                    <p class="text-muted">Donor Contact Information</p>
+                    <div class="mb-3">
+                        <i class="bi bi-envelope"></i> ${data.user.email}<br>
+                        ${data.user.phone ? '<i class="bi bi-telephone"></i> ' + data.user.phone + '<br>' : ''}
+                    </div>
+                    <div class="alert alert-info">
+                        <small>Please contact the donor to coordinate pickup details.</small>
+                    </div>
+                </div>
+            `;
+        } else {
+            modalBody.innerHTML = '<div class="text-danger">Error loading contact information.</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        modalBody.innerHTML = '<div class="text-danger">Error loading contact information.</div>';
+    });
+    
+    modal.show();
+}
+
+// Auto-refresh every 30 seconds to get latest status
+setInterval(() => {
+    fetch(window.location.href)
+        .then(response => response.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const newDoc = parser.parseFromString(html, 'text/html');
+            const newPickupsList = newDoc.getElementById('pickupsList');
+            if (newPickupsList) {
+                document.getElementById('pickupsList').innerHTML = newPickupsList.innerHTML;
+                updateCountdowns();
+            }
+        });
+}, 30000);
+</script>
+{% endblock %}

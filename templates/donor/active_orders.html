@@ -1,0 +1,591 @@
+{% extends "base.html" %}
+
+{% block title %}Active Orders - FoodShare{% endblock %}
+
+{% block extra_css %}
+<style>
+    .order-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        border-left: 4px solid #007bff;
+    }
+    
+    .order-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+    
+    .urgent-order {
+        border-left: 4px solid #dc3545;
+        animation: pulse 2s infinite;
+    }
+    
+    .status-badge {
+        font-size: 0.8em;
+        padding: 4px 8px;
+    }
+    
+    .countdown {
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+    }
+    
+    .countdown.urgent {
+        color: #dc3545;
+        animation: blink 1s infinite;
+    }
+    
+    .countdown.warning {
+        color: #fd7e14;
+    }
+    
+    .countdown.normal {
+        color: #28a745;
+    }
+    
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+    }
+    
+    @keyframes blink {
+        0%, 50% { opacity: 1; }
+        51%, 100% { opacity: 0.3; }
+    }
+    
+    .otp-display {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border-radius: 8px;
+        padding: 15px;
+        text-align: center;
+    }
+    
+    .otp-code {
+        font-size: 2em;
+        font-weight: bold;
+        letter-spacing: 8px;
+        color: #007bff;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .ngo-info {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+    }
+    
+    .map-container {
+        height: 200px;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .directions-btn {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.9em;
+        transition: all 0.3s ease;
+    }
+    
+    .directions-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+    }
+</style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1 class="h2">Active Orders</h1>
+        <p class="text-muted">Track who is coming to pick up your food donations.</p>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center py-3">
+                <h6 class="mb-0">Pending Pickups</h6>
+                <h3 class="mb-0 text-warning">{{ pending_orders|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center py-3">
+                <h6 class="mb-0">Confirmed Pickups</h6>
+                <h3 class="mb-0 text-info">{{ confirmed_orders|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center py-3">
+                <h6 class="mb-0">Ready Now</h6>
+                <h3 class="mb-0 text-success">{{ ready_orders|length }}</h3>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-light">
+            <div class="card-body text-center py-3">
+                <h6 class="mb-0">Completed Today</h6>
+                <h3 class="mb-0 text-primary">{{ completed_today|length }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Orders -->
+<div class="row" id="ordersList">
+    {% for claim in active_orders %}
+    {% set hours_left = ((claim.food_listing.pickup_end - datetime.utcnow()).total_seconds() / 3600)|round|int %}
+    {% set minutes_left = ((claim.food_listing.pickup_end - datetime.utcnow()).total_seconds() / 60)|round|int %}
+    <div class="col-md-6 col-lg-4 mb-4 order-item" 
+         data-claim-id="{{ claim.id }}"
+         data-expiry="{{ minutes_left }}"
+         data-status="{{ claim.status }}">
+        <div class="card h-100 order-card {% if hours_left < 2 %}urgent-order{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="badge status-badge 
+                    {% if claim.status == 'pending' %}bg-warning
+                    {% elif claim.status == 'confirmed' %}bg-info
+                    {% elif claim.status == 'picked_up' %}bg-success
+                    {% endif %}">
+                    {{ claim.status|title }}
+                </span>
+                <div class="countdown {% if minutes_left < 30 %}urgent{% elif minutes_left < 120 %}warning{% else %}normal{% endif %}" 
+                     id="countdown-{{ claim.id }}">
+                    Loading...
+                </div>
+            </div>
+            
+            <div class="card-body">
+                <h5 class="card-title">{{ claim.food_listing.title }}</h5>
+                <p class="text-muted small mb-3">
+                    <i class="bi bi-calendar"></i> Claimed {{ claim.created_at.strftime('%b %d, %I:%M %p') }}
+                </p>
+                
+                <!-- NGO Information -->
+                <div class="ngo-info mb-3">
+                    <h6 class="mb-2">
+                        <i class="bi bi-building"></i> {{ claim.ngo.organization or claim.ngo.username }}
+                    </h6>
+                    <p class="small mb-2">
+                        <i class="bi bi-envelope"></i> {{ claim.ngo.email }}<br>
+                        {% if claim.ngo.ngo_profile and claim.ngo.ngo_profile.phone %}
+                        <i class="bi bi-telephone"></i> {{ claim.ngo.ngo_profile.phone }}
+                        {% endif %}
+                    </p>
+                    {% if claim.notes %}
+                    <p class="small text-muted mb-0">
+                        <i class="bi bi-chat-left-text"></i> {{ claim.notes }}
+                    </p>
+                    {% endif %}
+                </div>
+                
+                <div class="mb-3">
+                    <p class="card-text small">
+                        <i class="bi bi-geo-alt"></i> {{ claim.food_listing.location }}
+                        {% if claim.food_listing.pickup_address %}
+                        <br><small class="text-muted">{{ claim.food_listing.pickup_address[:80] }}{% if claim.food_listing.pickup_address|length > 80 %}...{% endif %}</small>
+                        {% endif %}
+                    </p>
+                    
+                    <!-- Interactive Map -->
+                    {% if claim.food_listing.latitude and claim.food_listing.longitude %}
+                    <div class="map-container mb-2" id="map-{{ claim.id }}" 
+                         data-lat="{{ claim.food_listing.latitude }}" 
+                         data-lon="{{ claim.food_listing.longitude }}">
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button class="directions-btn" onclick="getDirections({{ claim.food_listing.latitude }}, {{ claim.food_listing.longitude }}, '{{ claim.food_listing.location|replace("'", "\'") }}')">
+                            <i class="bi bi-navigation"></i> Get Directions
+                        </button>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle"></i> Location coordinates not available
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <div class="border rounded p-2 text-center">
+                            <small class="d-block text-muted">Quantity</small>
+                            <strong>{{ claim.food_listing.quantity }} meals</strong>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="border rounded p-2 text-center">
+                            <small class="d-block text-muted">Pickup Window</small>
+                            <strong>{{ claim.food_listing.pickup_start.strftime('%I:%M') }} - {{ claim.food_listing.pickup_end.strftime('%I:%M %p') }}</strong>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- OTP Display for Confirmed Orders -->
+                {% if claim.status == 'confirmed' %}
+                <div class="otp-display">
+                    <h6 class="mb-3">Pickup Verification Code</h6>
+                    <div class="otp-code">{{ claim.otp_code }}</div>
+                    <p class="small text-muted mt-2">Share this 4-digit code with the NGO when they arrive</p>
+                </div>
+                {% endif %}
+                
+                <!-- Action Buttons -->
+                <div class="d-grid gap-2">
+                    {% if claim.status == 'pending' %}
+                    <button class="btn btn-info" onclick="confirmOrder({{ claim.id }})">
+                        <i class="bi bi-check2"></i> Confirm Pickup
+                    </button>
+                    {% elif claim.status == 'confirmed' %}
+                    <button class="btn btn-success" onclick="verifyPickup({{ claim.id }})">
+                        <i class="bi bi-shield-check"></i> Verify Pickup
+                    </button>
+                    {% endif %}
+                    
+                    <button class="btn btn-outline-primary" onclick="contactNGO({{ claim.ngo.id }})">
+                        <i class="bi bi-telephone"></i> Contact NGO
+                    </button>
+                    
+                    <button class="btn btn-outline-warning" onclick="rejectOrder({{ claim.id }})">
+                        <i class="bi bi-x-circle"></i> Cancel Order
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if not active_orders %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="bi bi-inbox display-4 text-muted mb-3"></i>
+                <h4>No Active Orders</h4>
+                <p class="text-muted mb-4">You don't have any active pickup orders at the moment.</p>
+                <a href="{{ url_for('my_listings') }}" class="btn btn-warning">
+                    <i class="bi bi-box-seam"></i> View My Listings
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Contact NGO Modal -->
+<div class="modal fade" id="contactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Contact NGO</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="contactModalBody">
+                <!-- Contact details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Verify Pickup Modal -->
+<div class="modal fade" id="verifyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Verify Pickup</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="verifyForm">
+                    <div class="mb-3">
+                        <label class="form-label">Enter OTP Code from NGO</label>
+                        <input type="text" class="form-control otp-input" 
+                               id="otpInput" 
+                               maxlength="4" 
+                               placeholder="0000"
+                               pattern="[0-9]{4}"
+                               required>
+                        <div class="form-text">Enter the 4-digit code provided by the NGO</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">People Served (Optional)</label>
+                        <input type="number" class="form-control" id="peopleServed" 
+                               placeholder="Number of people served" min="1">
+                    </div>
+                    <div id="verifyMessage"></div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" onclick="submitVerification()">Verify & Complete</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+let currentClaimId = null;
+let maps = {};
+
+// Initialize maps when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeAllMaps();
+});
+
+function initializeAllMaps() {
+    document.querySelectorAll('.map-container').forEach(mapElement => {
+        const lat = parseFloat(mapElement.getAttribute('data-lat'));
+        const lon = parseFloat(mapElement.getAttribute('data-lon'));
+        const mapId = mapElement.id;
+        
+        if (lat && lon && !maps[mapId]) {
+            try {
+                const map = L.map(mapId).setView([lat, lon], 15);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: 'OpenStreetMap contributors',
+                    maxZoom: 18
+                }).addTo(map);
+                
+                const marker = L.marker([lat, lon]).addTo(map);
+                marker.bindPopup('<strong>Pickup Location</strong><br>Click "Get Directions" for navigation').openPopup();
+                
+                maps[mapId] = map;
+                
+                // Fix map display after a short delay
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 100);
+                
+            } catch (error) {
+                console.error('Error initializing map:', error);
+                mapElement.innerHTML = '<div class="alert alert-warning">Map unavailable</div>';
+            }
+        }
+    });
+}
+
+// Get directions using Google Maps
+function getDirections(lat, lon, location) {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
+    window.open(url, '_blank');
+}
+
+// Countdown timer functionality
+function updateCountdowns() {
+    document.querySelectorAll('.order-item').forEach(item => {
+        const claimId = item.getAttribute('data-claim-id');
+        const expiryMinutes = parseInt(item.getAttribute('data-expiry'));
+        const countdownElement = document.getElementById(`countdown-${claimId}`);
+        
+        if (countdownElement && expiryMinutes > 0) {
+            const now = new Date();
+            const expiryTime = new Date(now.getTime() + expiryMinutes * 60000);
+            const timeDiff = expiryTime - now;
+            
+            if (timeDiff > 0) {
+                const hours = Math.floor(timeDiff / (1000 * 60 * 60));
+                const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+                const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+                
+                let timeString = '';
+                if (hours > 0) {
+                    timeString = `${hours}h ${minutes}m`;
+                } else {
+                    timeString = `${minutes}m ${seconds}s`;
+                }
+                
+                countdownElement.textContent = timeString;
+                
+                // Update urgency styling
+                countdownElement.className = 'countdown';
+                if (timeDiff < 30 * 60 * 1000) { // Less than 30 minutes
+                    countdownElement.classList.add('urgent');
+                } else if (timeDiff < 2 * 60 * 60 * 1000) { // Less than 2 hours
+                    countdownElement.classList.add('warning');
+                } else {
+                    countdownElement.classList.add('normal');
+                }
+            } else {
+                countdownElement.textContent = 'Expired';
+                countdownElement.className = 'countdown urgent';
+            }
+        }
+    });
+}
+
+// Update countdowns every second
+setInterval(updateCountdowns, 1000);
+updateCountdowns(); // Initial call
+
+// Confirm order function
+function confirmOrder(claimId) {
+    if (confirm('Are you sure you want to confirm this pickup? This will notify the NGO that you are ready.')) {
+        fetch(`/claim/${claimId}/update_status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                status: 'confirmed',
+                notes: 'Donor confirmed pickup is ready'
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while confirming the order.');
+        });
+    }
+}
+
+// Verify pickup function
+function verifyPickup(claimId) {
+    currentClaimId = claimId;
+    const modal = new bootstrap.Modal(document.getElementById('verifyModal'));
+    document.getElementById('verifyForm').reset();
+    document.getElementById('verifyMessage').innerHTML = '';
+    modal.show();
+}
+
+// Submit verification
+function submitVerification() {
+    const otp = document.getElementById('otpInput').value.trim();
+    const peopleServed = document.getElementById('peopleServed').value;
+    const messageDiv = document.getElementById('verifyMessage');
+    
+    if (!otp || otp.length !== 4 || !/^\d{4}$/.test(otp)) {
+        messageDiv.innerHTML = '<div class="alert alert-danger">Please enter a valid 4-digit OTP.</div>';
+        return;
+    }
+    
+    messageDiv.innerHTML = '<div class="alert alert-info">Verifying OTP...</div>';
+    
+    fetch(`/claim/${currentClaimId}/verify_otp`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            otp: otp,
+            people_served: peopleServed || null
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+            if (data.success) {
+                messageDiv.innerHTML = '<div class="alert alert-success">✅ Pickup verified successfully!</div>';
+                setTimeout(() => {
+                    bootstrap.Modal.getInstance(document.getElementById('verifyModal')).hide();
+                    if (data.receipt_url) {
+                        window.location.href = data.receipt_url;
+                    } else {
+                        location.reload();
+                    }
+                }, 2000);
+            } else {
+                messageDiv.innerHTML = '<div class="alert alert-danger">❌ Invalid OTP. Please check with the NGO.</div>';
+            }
+        })
+    .catch(error => {
+        console.error('Error:', error);
+        messageDiv.innerHTML = '<div class="alert alert-danger">An error occurred. Please try again.</div>';
+    });
+}
+
+// Contact NGO function
+function contactNGO(ngoId) {
+    const modal = new bootstrap.Modal(document.getElementById('contactModal'));
+    const modalBody = document.getElementById('contactModalBody');
+    
+    modalBody.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"></div></div>';
+    
+    fetch(`/api/user/${ngoId}/contact`)
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            modalBody.innerHTML = `
+                <div class="text-center">
+                    <h6>${data.user.organization || data.user.username}</h6>
+                    <p class="text-muted">NGO Contact Information</p>
+                    <div class="mb-3">
+                        <i class="bi bi-envelope"></i> ${data.user.email}<br>
+                        ${data.user.phone ? '<i class="bi bi-telephone"></i> ' + data.user.phone + '<br>' : ''}
+                    </div>
+                    <div class="alert alert-info">
+                        <small>Feel free to contact the NGO to coordinate pickup details.</small>
+                    </div>
+                </div>
+            `;
+        } else {
+            modalBody.innerHTML = '<div class="text-danger">Error loading contact information.</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        modalBody.innerHTML = '<div class="text-danger">Error loading contact information.</div>';
+    });
+    
+    modal.show();
+}
+
+// Reject order function
+function rejectOrder(claimId) {
+    if (confirm('Are you sure you want to cancel this pickup? The food will become available for other NGOs.')) {
+        fetch(`/claim/${claimId}/reject`, {
+            method: 'POST'
+        })
+        .then(response => {
+            if (response.ok) {
+                location.reload();
+            } else {
+                alert('Error cancelling order. Please try again.');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred while cancelling the order.');
+        });
+    }
+}
+
+// Auto-refresh every 30 seconds to get latest status
+setInterval(() => {
+    fetch(window.location.href)
+        .then(response => response.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const newDoc = parser.parseFromString(html, 'text/html');
+            const newOrdersList = newDoc.getElementById('ordersList');
+            if (newOrdersList) {
+                document.getElementById('ordersList').innerHTML = newOrdersList.innerHTML;
+                updateCountdowns();
+            }
+        });
+}, 30000);
+</script>
+{% endblock %}

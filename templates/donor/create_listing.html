@@ -16,36 +16,31 @@
                         <h5 class="mb-3">Basic Information</h5>
                         
                         <div class="mb-3">
-                            <label for="title" class="form-label">Food Item / Meal Name *</label>
+                            <label for="food_type" class="form-label">Food Type *</label>
+                            <select class="form-select" id="food_type" name="food_type" required>
+                                <option value="">Select type...</option>
+                                <option value="solid" {% if copy and copy.food_type == 'solid' %}selected{% endif %}>Solid</option>
+                                <option value="liquid" {% if copy and copy.food_type == 'liquid' %}selected{% endif %}>Liquid</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Food Item *</label>
                             <input type="text" class="form-control" id="title" name="title" 
                                    placeholder="e.g., Buffet Meals, Sandwiches, Packaged Food"
                                    value="{{ copy.title if copy else '' }}" required>
                         </div>
                         
                         <div class="mb-3">
-                            <label for="description" class="form-label">Description</label>
+                            <label for="description" class="form-label">Description *</label>
                             <textarea class="form-control" id="description" name="description" 
-                                      rows="3" placeholder="Describe the food items...">{{ copy.description if copy else '' }}</textarea>
+                                      rows="3" placeholder="Describe the food items..." required>{{ copy.description if copy else '' }}</textarea>
                         </div>
                         
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="food_type" class="form-label">Food Type *</label>
-                                <select class="form-select" id="food_type" name="food_type" required>
-                                    <option value="">Select type...</option>
-                                    <option value="cooked" {% if copy and copy.food_type == 'cooked' %}selected{% endif %}>Cooked Food</option>
-                                    <option value="packaged" {% if copy and copy.food_type == 'packaged' %}selected{% endif %}>Packaged Food</option>
-                                    <option value="raw" {% if copy and copy.food_type == 'raw' %}selected{% endif %}>Raw Ingredients</option>
-                                    <option value="baked" {% if copy and copy.food_type == 'baked' %}selected{% endif %}>Baked Goods</option>
-                                    <option value="fresh" {% if copy and copy.food_type == 'fresh' %}selected{% endif %}>Fresh Produce</option>
-                                    <option value="frozen" {% if copy and copy.food_type == 'frozen' %}selected{% endif %}>Frozen Food</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6 mb-3">
-                                <label for="quantity" class="form-label">Quantity (Number of meals) *</label>
-                                <input type="number" class="form-control" id="quantity" name="quantity" 
-                                       min="1" max="10000" value="{{ copy.quantity if copy else '' }}" required>
-                            </div>
+                        <div class="mb-3">
+                            <label for="quantity" class="form-label">Quantity (Number of meals) *</label>
+                            <input type="number" class="form-control" id="quantity" name="quantity" 
+                                   min="1" max="10000" value="{{ copy.quantity if copy else '' }}" required>
                         </div>
                         
                         <!-- Image Upload -->
@@ -85,29 +80,24 @@
                         <input type="hidden" id="latitude" name="latitude">
                         <input type="hidden" id="longitude" name="longitude">
                         
-                        <div class="row">
+                        <!-- Automatic Pickup Time (Hidden) -->
+                        <div class="row" style="display: none;">
                             <div class="col-md-6 mb-3">
-                                <label for="pickup_start" class="form-label">Pickup Start Time *</label>
                                 <input type="datetime-local" class="form-control" id="pickup_start" 
                                        name="pickup_start" value="{{ default_start }}" required>
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label for="pickup_end" class="form-label">Pickup End Time *</label>
                                 <input type="datetime-local" class="form-control" id="pickup_end" 
                                        name="pickup_end" value="{{ default_end }}" required>
                             </div>
                         </div>
-                    </div>
-                    
-                    <!-- Food Safety -->
-                    <div class="mb-4">
-                        <h5 class="mb-3">Food Safety Information</h5>
                         
-                        <div class="mb-3">
-                            <label for="allergens" class="form-label">Allergens / Special Notes</label>
-                            <textarea class="form-control" id="allergens" name="allergens" 
-                                      rows="2" placeholder="e.g., Contains nuts, gluten-free, etc.">{{ copy.allergens if copy else '' }}</textarea>
-                            <div class="form-text">Please list any allergens or special handling instructions.</div>
+                        <!-- Display Automatic Times -->
+                        <div class="alert alert-info">
+                            <h6><i class="bi bi-clock"></i> Automatic Pickup Schedule</h6>
+                            <p class="mb-1"><strong>Start Time:</strong> {{ display_start }}</p>
+                            <p class="mb-0"><strong>End Time:</strong> {{ display_end }}</p>
+                            <small class="text-muted">Pickup window is automatically set to 2 hours from now</small>
                         </div>
                     </div>
                     
@@ -117,22 +107,6 @@
                         <button type="submit" class="btn btn-success">{% if copy %}Repost Listing{% else %}Create Listing{% endif %}</button>
                     </div>
                 </form>
-            </div>
-        </div>
-        
-        <!-- Food Safety Guidelines -->
-        <div class="card mt-4 border-info">
-            <div class="card-header bg-info text-white">
-                <h5 class="mb-0">Food Safety Guidelines</h5>
-            </div>
-            <div class="card-body">
-                <ul class="mb-0">
-                    <li>Only donate food that is safe to eat and within its shelf life</li>
-                    <li>Keep hot food hot (above 60°C) and cold food cold (below 5°C)</li>
-                    <li>Pack food securely to prevent contamination during transport</li>
-                    <li>Label food with preparation time and any allergens</li>
-                    <li>Follow local health department guidelines</li>
-                </ul>
             </div>
         </div>
     </div>

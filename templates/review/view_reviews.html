@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}Reviews - {{ claim.food_listing.title }} - FoodShare{% endblock %}
+
+{% block extra_css %}
+<style>
+    .review-container {
+        max-width: 800px;
+        margin: 0 auto;
+    }
+    
+    .food-info {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px;
+        padding: 25px;
+        margin-bottom: 30px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .review-card {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        border-left: 4px solid #28a745;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .review-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.12);
+    }
+    
+    .star-display {
+        color: #ffc107;
+        font-size: 1.2em;
+        margin-bottom: 10px;
+    }
+    
+    .star-display .empty {
+        color: #ddd;
+    }
+    
+    .reviewer-info {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .reviewer-avatar {
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.2em;
+        margin-right: 15px;
+    }
+    
+    .reviewer-details h5 {
+        margin: 0;
+        color: #333;
+    }
+    
+    .reviewer-details small {
+        color: #6c757d;
+    }
+    
+    .review-type-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8em;
+        font-weight: 600;
+        margin-left: 10px;
+    }
+    
+    .review-type-badge.donor-to-ngo {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    
+    .review-type-badge.ngo-to-donor {
+        background: #f3e5f5;
+        color: #7b1fa2;
+    }
+    
+    .review-comment {
+        color: #555;
+        line-height: 1.6;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #e9ecef;
+    }
+    
+    .no-reviews {
+        text-align: center;
+        padding: 60px 20px;
+        background: #f8f9fa;
+        border-radius: 15px;
+        color: #6c757d;
+    }
+    
+    .no-reviews i {
+        font-size: 4em;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-top: 30px;
+    }
+    
+    .btn-create-review {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border: none;
+        color: white;
+        padding: 12px 25px;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-create-review:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(40,167,69,0.3);
+    }
+    
+    .btn-back {
+        background: #6c757d;
+        border: none;
+        color: white;
+        padding: 12px 25px;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-back:hover {
+        background: #5a6268;
+        transform: translateY(-2px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="review-container">
+        <!-- Food Information -->
+        <div class="food-info">
+            <h2 class="mb-3">{{ claim.food_listing.title }}</h2>
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-2"><i class="bi bi-calendar"></i> <strong>Pickup Date:</strong> {{ claim.pickup_time.strftime('%B %d, %Y at %I:%M %p') }}</p>
+                    <p class="mb-2"><i class="bi bi-geo-alt"></i> <strong>Location:</strong> {{ claim.food_listing.location }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="mb-2"><i class="bi bi-box"></i> <strong>Quantity:</strong> {{ claim.food_listing.quantity }} meals</p>
+                    <p class="mb-2"><i class="bi bi-people"></i> <strong>Served:</strong> {{ claim.people_served or claim.food_listing.quantity }} people</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Reviews Section -->
+        <div class="mb-4">
+            <h3 class="h4 mb-4">
+                <i class="bi bi-star-fill text-warning"></i> Reviews 
+                <span class="badge bg-secondary ms-2">{{ reviews|length }}</span>
+            </h3>
+            
+            {% if reviews %}
+                {% for review in reviews %}
+                <div class="review-card">
+                    <div class="reviewer-info">
+                        <div class="reviewer-avatar">
+                            {{ review.from_user.username[0].upper() }}
+                        </div>
+                        <div class="reviewer-details">
+                            <h5>
+                                {{ review.from_user.organization or review.from_user.username }}
+                                {% if review.from_user.role == 'donor' %}
+                                    <span class="review-type-badge donor-to-ngo">Donor → NGO</span>
+                                {% else %}
+                                    <span class="review-type-badge ngo-to-donor">NGO → Donor</span>
+                                {% endif %}
+                            </h5>
+                            <small>
+                                <i class="bi bi-clock"></i> {{ review.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                            </small>
+                        </div>
+                    </div>
+                    
+                    <div class="star-display">
+                        {% for i in range(5) %}
+                            {% if i < review.rating %}
+                                <span class="filled">★</span>
+                            {% else %}
+                                <span class="empty">★</span>
+                            {% endif %}
+                        {% endfor %}
+                        <span class="ms-2 text-muted">({{ review.rating }}/5)</span>
+                    </div>
+                    
+                    {% if review.comment %}
+                    <div class="review-comment">
+                        <p class="mb-0">{{ review.comment }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <i class="bi bi-person-check"></i> Reviewing: 
+                            <strong>
+                                {% if review.from_user.id == claim.food_listing.donor_id %}
+                                    {{ claim.ngo.organization or claim.ngo.username }} (NGO)
+                                {% else %}
+                                    {{ claim.food_listing.donor.organization or claim.food_listing.donor.username }} (Donor)
+                                {% endif %}
+                            </strong>
+                        </small>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-reviews">
+                    <i class="bi bi-star"></i>
+                    <h4>No Reviews Yet</h4>
+                    <p>Be the first to share your experience about this pickup!</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            {% if claim.status == 'picked_up' %}
+                {% set can_review = false %}
+                {% for review in reviews %}
+                    {% if review.from_user_id == current_user.id %}
+                        {% set can_review = true %}
+                    {% endif %}
+                {% endfor %}
+                
+                {% if not can_review %}
+                    <a href="{{ url_for('create_review', claim_id=claim.id) }}" class="btn btn-create-review">
+                        <i class="bi bi-plus-circle"></i> Write a Review
+                    </a>
+                {% endif %}
+            {% endif %}
+            
+            <a href="{{ url_for('dashboard') }}" class="btn btn-back">
+                <i class="bi bi-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Add any interactive functionality if needed
+document.addEventListener('DOMContentLoaded', function() {
+    // Animate review cards on load
+    const reviewCards = document.querySelectorAll('.review-card');
+    reviewCards.forEach((card, index) => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        
+        setTimeout(() => {
+            card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+        }, index * 100);
+    });
+});
+</script>
+{% endblock %}

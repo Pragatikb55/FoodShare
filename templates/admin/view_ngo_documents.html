@@ -1,0 +1,502 @@
+{% extends "admin/admin_base.html" %}
+
+{% block title %}NGO Documents - FoodShare Admin{% endblock %}
+
+{% block page_title %}NGO Documents Verification{% endblock %}
+
+{% block extra_css %}
+<style>
+    .documents-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+    
+    .ngo-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 30px;
+        margin-bottom: 30px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    }
+    
+    .ngo-info {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+    
+    .ngo-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255,255,255,0.2);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 2rem;
+    }
+    
+    .ngo-details h2 {
+        margin: 0 0 10px 0;
+        font-size: 1.8rem;
+    }
+    
+    .ngo-details .meta {
+        opacity: 0.9;
+        font-size: 1.1rem;
+    }
+    
+    .verification-status {
+        margin-top: 15px;
+        padding: 10px 20px;
+        border-radius: 25px;
+        display: inline-block;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .verification-status.verified {
+        background: rgba(40, 167, 69, 0.3);
+        border: 2px solid #28a745;
+    }
+    
+    .verification-status.pending {
+        background: rgba(255, 193, 7, 0.3);
+        border: 2px solid #ffc107;
+    }
+    
+    .documents-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+        gap: 25px;
+        margin-bottom: 30px;
+    }
+    
+    .document-card {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        transition: all 0.3s ease;
+        border-left: 4px solid #4e73df;
+    }
+    
+    .document-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .document-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    
+    .document-title {
+        font-size: 1.2rem;
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+    
+    .document-status {
+        padding: 4px 10px;
+        border-radius: 15px;
+        font-size: 0.8em;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .document-status.available {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .document-status.missing {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .document-preview {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 15px;
+        min-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+    }
+    
+    .document-preview img {
+        max-width: 100%;
+        max-height: 300px;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .document-preview .placeholder {
+        color: #6c757d;
+        font-size: 1.1rem;
+    }
+    
+    .document-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    
+    .btn-view {
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .btn-view:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,123,255,0.3);
+        color: white;
+    }
+    
+    .btn-download {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    
+    .btn-download:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(40,167,69,0.3);
+        color: white;
+    }
+    
+    .info-section {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        margin-bottom: 30px;
+    }
+    
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+    }
+    
+    .info-item {
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+    
+    .info-item .label {
+        font-size: 0.9em;
+        color: #6c757d;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+    }
+    
+    .info-item .value {
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .action-section {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        text-align: center;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 20px;
+    }
+    
+    .btn-verify {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border: none;
+        color: white;
+        padding: 12px 30px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1.1rem;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-verify:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(40,167,69,0.3);
+    }
+    
+    .btn-reject {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        border: none;
+        color: white;
+        padding: 12px 30px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1.1rem;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-reject:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(220,53,69,0.3);
+    }
+    
+    .notes-section {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 20px;
+    }
+    
+    .notes-section h6 {
+        color: #856404;
+        margin: 0 0 10px 0;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="documents-container">
+    <!-- NGO Header -->
+    <div class="ngo-header">
+        <div class="ngo-info">
+            <div class="ngo-avatar">
+                {{ (user.username)[0].upper() }}
+            </div>
+            <div class="ngo-details">
+                <h2>{{ ngo_profile.organization }}</h2>
+                <div class="meta">
+                    <i class="bi bi-envelope"></i> {{ user.email }}<br>
+                    <i class="bi bi-telephone"></i> {{ ngo_profile.phone or 'Not provided' }}<br>
+                    <i class="bi bi-geo-alt"></i> {{ ngo_profile.city }}, {{ ngo_profile.state }}
+                </div>
+                <div class="verification-status {{ 'verified' if ngo_profile.verified else 'pending' }}">
+                    {% if ngo_profile.verified %}
+                        <i class="bi bi-check-circle-fill"></i> Verified NGO
+                    {% else %}
+                        <i class="bi bi-clock-fill"></i> Pending Verification
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- NGO Information -->
+    <div class="info-section">
+        <h4><i class="bi bi-info-circle"></i> NGO Information</h4>
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="label">Registration Number</div>
+                <div class="value">{{ ngo_profile.registration_number or 'Not provided' }}</div>
+            </div>
+            <div class="info-item">
+                <div class="label">NGO Type</div>
+                <div class="value">{{ ngo_profile.ngo_type or 'Not specified' }}</div>
+            </div>
+            <div class="info-item">
+                <div class="label">Capacity</div>
+                <div class="value">{{ ngo_profile.capacity or 'Not specified' }} people</div>
+            </div>
+            <div class="info-item">
+                <div class="label">Username</div>
+                <div class="value">{{ user.username }}</div>
+            </div>
+            <div class="info-item">
+                <div class="label">Member Since</div>
+                <div class="value">{{ user.created_at.strftime('%B %d, %Y') }}</div>
+            </div>
+            <div class="info-item">
+                <div class="label">Address</div>
+                <div class="value">{{ ngo_profile.address or 'Not provided' }}</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Documents Grid -->
+    <h4><i class="bi bi-file-text"></i> Verification Documents</h4>
+    <div class="documents-grid">
+        <!-- Registration Certificate -->
+        <div class="document-card">
+            <div class="document-header">
+                <h5 class="document-title">Registration Certificate</h5>
+                <span class="document-status {{ 'available' if ngo_profile.registration_certificate else 'missing' }}">
+                    {% if ngo_profile.registration_certificate %}Available{% else %}Missing{% endif %}
+                </span>
+            </div>
+            <div class="document-preview">
+                {% if ngo_profile.registration_certificate %}
+                    <img src="{{ url_for('static', filename='uploads/' + ngo_profile.registration_certificate) }}" 
+                         alt="Registration Certificate" 
+                         onclick="window.open(this.src, '_blank')">
+                {% else %}
+                    <div class="placeholder">
+                        <i class="bi bi-file-earmark-text" style="font-size: 3em;"></i><br>
+                        No document uploaded
+                    </div>
+                {% endif %}
+            </div>
+            <div class="document-actions">
+                {% if ngo_profile.registration_certificate %}
+                    <a href="{{ url_for('static', filename='uploads/' + ngo_profile.registration_certificate) }}" 
+                       target="_blank" class="btn-view">
+                        <i class="bi bi-eye"></i> View
+                    </a>
+                    <a href="{{ url_for('static', filename='uploads/' + ngo_profile.registration_certificate) }}" 
+                       download class="btn-download">
+                        <i class="bi bi-download"></i> Download
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- ID Proof -->
+        <div class="document-card">
+            <div class="document-header">
+                <h5 class="document-title">ID Proof</h5>
+                <span class="document-status {{ 'available' if ngo_profile.id_proof else 'missing' }}">
+                    {% if ngo_profile.id_proof %}Available{% else %}Missing{% endif %}
+                </span>
+            </div>
+            <div class="document-preview">
+                {% if ngo_profile.id_proof %}
+                    <img src="{{ url_for('static', filename='uploads/' + ngo_profile.id_proof) }}" 
+                         alt="ID Proof" 
+                         onclick="window.open(this.src, '_blank')">
+                {% else %}
+                    <div class="placeholder">
+                        <i class="bi bi-person-badge" style="font-size: 3em;"></i><br>
+                        No document uploaded
+                    </div>
+                {% endif %}
+            </div>
+            <div class="document-actions">
+                {% if ngo_profile.id_proof %}
+                    <a href="{{ url_for('static', filename='uploads/' + ngo_profile.id_proof) }}" 
+                       target="_blank" class="btn-view">
+                        <i class="bi bi-eye"></i> View
+                    </a>
+                    <a href="{{ url_for('static', filename='uploads/' + ngo_profile.id_proof) }}" 
+                       download class="btn-download">
+                        <i class="bi bi-download"></i> Download
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Address Proof -->
+        <div class="document-card">
+            <div class="document-header">
+                <h5 class="document-title">Address Proof</h5>
+                <span class="document-status {{ 'available' if ngo_profile.address_proof else 'missing' }}">
+                    {% if ngo_profile.address_proof %}Available{% else %}Missing{% endif %}
+                </span>
+            </div>
+            <div class="document-preview">
+                {% if ngo_profile.address_proof %}
+                    <img src="{{ url_for('static', filename='uploads/' + ngo_profile.address_proof) }}" 
+                         alt="Address Proof" 
+                         onclick="window.open(this.src, '_blank')">
+                {% else %}
+                    <div class="placeholder">
+                        <i class="bi bi-house" style="font-size: 3em;"></i><br>
+                        No document uploaded
+                    </div>
+                {% endif %}
+            </div>
+            <div class="document-actions">
+                {% if ngo_profile.address_proof %}
+                    <a href="{{ url_for('static', filename='uploads/' + ngo_profile.address_proof) }}" 
+                       target="_blank" class="btn-view">
+                        <i class="bi bi-eye"></i> View
+                    </a>
+                    <a href="{{ url_for('static', filename='uploads/' + ngo_profile.address_proof) }}" 
+                       download class="btn-download">
+                        <i class="bi bi-download"></i> Download
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Verification Actions -->
+    {% if not ngo_profile.verified %}
+    <div class="action-section">
+        <h4><i class="bi bi-shield-check"></i> Verification Decision</h4>
+        <p>Review the uploaded documents and NGO information to make a verification decision.</p>
+        
+        <div class="notes-section">
+            <h6><i class="bi bi-exclamation-triangle"></i> Verification Checklist</h6>
+            <ul class="text-start">
+                <li>Registration Certificate is valid and clearly visible</li>
+                <li>ID Proof matches the authorized representative</li>
+                <li>Address Proof matches the provided address</li>
+                <li>Organization details are complete and accurate</li>
+                <li>Contact information is verified</li>
+            </ul>
+        </div>
+        
+        <div class="action-buttons">
+            <form method="POST" action="{{ url_for('toggle_ngo_status', user_id=user.id) }}" class="d-inline">
+                <button type="submit" class="btn-verify" 
+                        onclick="return confirm('Are you sure you want to verify this NGO? They will be able to claim food listings.')">
+                    <i class="bi bi-check-circle"></i> Verify NGO
+                </button>
+            </form>
+            
+            <a href="{{ url_for('ngo_verification') }}" class="btn btn-secondary btn-lg">
+                <i class="bi bi-arrow-left"></i> Back to Verification
+            </a>
+        </div>
+    </div>
+    {% else %}
+    <div class="action-section">
+        <h4><i class="bi bi-check-circle-fill text-success"></i> Already Verified</h4>
+        <p>This NGO has been verified and can claim food listings.</p>
+        
+        <div class="action-buttons">
+            <form method="POST" action="{{ url_for('toggle_ngo_status', user_id=user.id) }}" class="d-inline">
+                <button type="submit" class="btn-reject" 
+                        onclick="return confirm('Are you sure you want to revoke verification? This NGO will no longer be able to claim food listings.')">
+                    <i class="bi bi-x-circle"></i> Revoke Verification
+                </button>
+            </form>
+            
+            <a href="{{ url_for('ngo_verification') }}" class="btn btn-secondary btn-lg">
+                <i class="bi bi-arrow-left"></i> Back to Verification
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

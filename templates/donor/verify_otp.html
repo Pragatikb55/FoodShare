@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Verify OTP - FoodShare{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-shield-check"></i> OTP Verification
+                </h4>
+            </div>
+            <div class="card-body">
+                <!-- Claim Details -->
+                <div class="alert alert-info mb-4">
+                    <h6 class="alert-heading">Claim Details</h6>
+                    <div class="row">
+                        <div class="col-6">
+                            <strong>Food Item:</strong><br>
+                            {{ claim.food_listing.title }}
+                        </div>
+                        <div class="col-6">
+                            <strong>Claimed By:</strong><br>
+                            {{ claim.receiver.organization or claim.receiver.username }}
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-6">
+                            <strong>Quantity:</strong><br>
+                            {{ claim.food_listing.quantity }} meals
+                        </div>
+                        <div class="col-6">
+                            <strong>Status:</strong><br>
+                            <span class="badge bg-primary">{{ claim.status|title }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Instructions -->
+                <div class="alert alert-warning mb-4">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Instructions:</strong>
+                    <ol class="mb-0 mt-2">
+                        <li>Ask the NGO representative for their 4-digit OTP code</li>
+                        <li>Enter the OTP in the field below</li>
+                        <li>Click "Verify OTP" to confirm pickup</li>
+                    </ol>
+                </div>
+
+                <!-- Time Warning -->
+                {% set time_remaining = (claim.created_at + timedelta(hours=2) - datetime.utcnow()).total_seconds() %}
+                {% if time_remaining > 0 %}
+                <div class="alert alert-success mb-4">
+                    <i class="bi bi-clock"></i>
+                    <strong>Time Remaining:</strong> 
+                    <span id="countdown"></span>
+                </div>
+                {% else %}
+                <div class="alert alert-danger mb-4">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Expired!</strong> This claim has expired and will be auto-cancelled.
+                </div>
+                {% endif %}
+
+                <!-- OTP Verification Form -->
+                {% if time_remaining > 0 %}
+                <form method="POST" id="otpForm">
+                    <div class="mb-4">
+                        <label for="otp" class="form-label">
+                            <i class="bi bi-key"></i> Enter 4-Digit OTP
+                        </label>
+                        <div class="input-group input-group-lg">
+                            <input type="text" 
+                                   class="form-control text-center" 
+                                   id="otp" 
+                                   name="otp" 
+                                   maxlength="4" 
+                                   pattern="[0-9]{4}" 
+                                   required 
+                                   placeholder="0000"
+                                   autocomplete="off">
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check-circle"></i> Verify OTP
+                            </button>
+                        </div>
+                        <div class="form-text">Enter the 4-digit code provided by the NGO representative</div>
+                    </div>
+                </form>
+                {% endif %}
+
+                <!-- Action Buttons -->
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('donor_dashboard') }}" class="btn btn-secondary">
+                        <i class="bi bi-arrow-left"></i> Back to Dashboard
+                    </a>
+                    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#contactModal">
+                        <i class="bi bi-telephone"></i> Contact NGO
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Contact Modal -->
+<div class="modal fade" id="contactModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Contact NGO</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>NGO Information</h6>
+                <p><strong>Organization:</strong> {{ claim.receiver.organization or claim.receiver.username }}</p>
+                <p><strong>Contact Person:</strong> {{ claim.receiver.username }}</p>
+                <p><strong>Email:</strong> {{ claim.receiver.email }}</p>
+                {% if claim.receiver.phone %}
+                <p><strong>Phone:</strong> {{ claim.receiver.phone }}</p>
+                {% endif %}
+                
+                <hr>
+                <h6>Claim Details</h6>
+                <p><strong>Food Item:</strong> {{ claim.food_listing.title }}</p>
+                <p><strong>Quantity:</strong> {{ claim.food_listing.quantity }} meals</p>
+                <p><strong>Pickup Address:</strong> {{ claim.food_listing.pickup_address }}</p>
+                <p><strong>Claim Time:</strong> {{ claim.created_at.strftime('%B %d, %Y %I:%M %p') }}</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <a href="mailto:{{ claim.receiver.email }}" class="btn btn-primary">
+                    <i class="bi bi-envelope"></i> Send Email
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Auto-format OTP input
+document.getElementById('otp').addEventListener('input', function(e) {
+    this.value = this.value.replace(/[^0-9]/g, '').slice(0, 4);
+});
+
+// Countdown timer
+{% if time_remaining > 0 %}
+function updateCountdown() {
+    const totalSeconds = {{ time_remaining }};
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.floor(totalSeconds % 60);
+    
+    let countdownText = '';
+    if (hours > 0) {
+        countdownText = `${hours}h ${minutes}m ${seconds}s`;
+    } else if (minutes > 0) {
+        countdownText = `${minutes}m ${seconds}s`;
+    } else {
+        countdownText = `${seconds}s`;
+    }
+    
+    document.getElementById('countdown').textContent = countdownText;
+}
+
+// Update countdown every second
+setInterval(updateCountdown, 1000);
+updateCountdown(); // Initial call
+{% endif %}
+
+// Form submission
+document.getElementById('otpForm').addEventListener('submit', function(e) {
+    const otp = document.getElementById('otp').value;
+    if (otp.length !== 4) {
+        e.preventDefault();
+        alert('Please enter a valid 4-digit OTP code.');
+        return false;
+    }
+});
+</script>
+{% endblock %}

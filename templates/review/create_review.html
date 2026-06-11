@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Create Review - FoodShare{% endblock %}
+
+{% block extra_css %}
+<style>
+    .review-container {
+        max-width: 600px;
+        margin: 0 auto;
+    }
+    
+    .star-rating {
+        font-size: 2.5em;
+        color: #ddd;
+        cursor: pointer;
+        transition: color 0.2s;
+    }
+    
+    .star-rating .star {
+        display: inline-block;
+        margin: 0 5px;
+    }
+    
+    .star-rating .star:hover,
+    .star-rating .star.active {
+        color: #ffc107;
+    }
+    
+    .star-rating .star.hover {
+        color: #ffdb4d;
+    }
+    
+    .review-form {
+        background: #f8f9fa;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    }
+    
+    .food-info {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    
+    .btn-submit {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border: none;
+        color: white;
+        padding: 12px 30px;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-submit:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(40,167,69,0.3);
+    }
+    
+    .btn-submit:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    .character-count {
+        font-size: 0.9em;
+        color: #6c757d;
+    }
+    
+    .character-count.warning {
+        color: #fd7e14;
+    }
+    
+    .character-count.danger {
+        color: #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="review-container">
+        <div class="text-center mb-4">
+            <h1 class="h2">Leave a Review</h1>
+            <p class="text-muted">Share your experience about this food pickup</p>
+        </div>
+        
+        <!-- Food Information -->
+        <div class="food-info">
+            <h4 class="mb-3">{{ claim.food_listing.title }}</h4>
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-2"><i class="bi bi-calendar"></i> Pickup Date: {{ claim.pickup_time.strftime('%B %d, %Y') }}</p>
+                    <p class="mb-2"><i class="bi bi-geo-alt"></i> {{ claim.food_listing.location }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="mb-2"><i class="bi bi-box"></i> Quantity: {{ claim.food_listing.quantity }} meals</p>
+                    <p class="mb-2"><i class="bi bi-people"></i> Served: {{ claim.people_served or claim.food_listing.quantity }} people</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Review Form -->
+        <div class="review-form">
+            <form id="reviewForm">
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Who are you reviewing?</label>
+                    <div class="alert alert-info">
+                        {% if current_user.id == claim.food_listing.donor_id %}
+                            <i class="bi bi-building"></i> <strong>{{ claim.ngo.organization or claim.ngo.username }}</strong> (NGO)
+                        {% else %}
+                            <i class="bi bi-person"></i> <strong>{{ claim.food_listing.donor.organization or claim.food_listing.donor.username }}</strong> (Donor)
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Rating <span class="text-danger">*</span></label>
+                    <div class="star-rating" id="starRating">
+                        <span class="star" data-rating="1">★</span>
+                        <span class="star" data-rating="2">★</span>
+                        <span class="star" data-rating="3">★</span>
+                        <span class="star" data-rating="4">★</span>
+                        <span class="star" data-rating="5">★</span>
+                    </div>
+                    <input type="hidden" id="rating" name="rating" value="0" required>
+                    <div class="form-text">Click to rate your experience</div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="comment" class="form-label fw-bold">Comment (Optional)</label>
+                    <textarea class="form-control" id="comment" name="comment" rows="4" 
+                              placeholder="Share details about your experience..." maxlength="500"></textarea>
+                    <div class="character-count mt-1">
+                        <span id="charCount">0</span> / 500 characters
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-secondary me-md-2">Cancel</a>
+                    <button type="submit" class="btn btn-submit" id="submitBtn">
+                        <i class="bi bi-send"></i> Submit Review
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedRating = 0;
+
+// Star rating functionality
+const stars = document.querySelectorAll('.star');
+const ratingInput = document.getElementById('rating');
+
+stars.forEach(star => {
+    star.addEventListener('click', function() {
+        selectedRating = parseInt(this.getAttribute('data-rating'));
+        ratingInput.value = selectedRating;
+        updateStars(selectedRating);
+    });
+    
+    star.addEventListener('mouseenter', function() {
+        const hoverRating = parseInt(this.getAttribute('data-rating'));
+        updateStars(hoverRating, true);
+    });
+});
+
+document.getElementById('starRating').addEventListener('mouseleave', function() {
+    updateStars(selectedRating);
+});
+
+function updateStars(rating, isHover = false) {
+    stars.forEach((star, index) => {
+        star.classList.remove('active', 'hover');
+        if (index < rating) {
+            star.classList.add(isHover ? 'hover' : 'active');
+        }
+    });
+}
+
+// Character count
+const commentTextarea = document.getElementById('comment');
+const charCount = document.getElementById('charCount');
+
+commentTextarea.addEventListener('input', function() {
+    const length = this.value.length;
+    charCount.textContent = length;
+    
+    charCount.parentElement.classList.remove('warning', 'danger');
+    if (length > 400) {
+        charCount.parentElement.classList.add('warning');
+    }
+    if (length >= 500) {
+        charCount.parentElement.classList.add('danger');
+    }
+});
+
+// Form submission
+document.getElementById('reviewForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    if (selectedRating === 0) {
+        alert('Please select a rating before submitting.');
+        return;
+    }
+    
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Submitting...';
+    
+    const formData = {
+        rating: selectedRating,
+        comment: commentTextarea.value.trim()
+    };
+    
+    fetch(`/review/{{ claim.id }}/submit`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Review submitted successfully!');
+            window.location.href = data.redirect_url;
+        } else {
+            alert(data.message || 'Failed to submit review. Please try again.');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred. Please try again.');
+    })
+    .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-send"></i> Submit Review';
+    });
+});
+</script>
+{% endblock %}

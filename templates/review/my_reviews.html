@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+
+{% block title %}My Reviews - FoodShare{% endblock %}
+
+{% block extra_css %}
+<style>
+    .reviews-container {
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+    
+    .tab-navigation {
+        display: flex;
+        border-bottom: 2px solid #e9ecef;
+        margin-bottom: 30px;
+    }
+    
+    .tab-btn {
+        background: none;
+        border: none;
+        padding: 15px 25px;
+        font-weight: 600;
+        color: #6c757d;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -2px;
+    }
+    
+    .tab-btn.active {
+        color: #007bff;
+        border-bottom-color: #007bff;
+        background: #f8f9fa;
+    }
+    
+    .tab-btn:hover {
+        color: #007bff;
+        background: #f8f9fa;
+    }
+    
+    .tab-content {
+        display: none;
+    }
+    
+    .tab-content.active {
+        display: block;
+        animation: fadeIn 0.3s ease;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .review-card {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        margin-bottom: 20px;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .review-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(0,0,0,0.12);
+    }
+    
+    .review-card.given {
+        border-left: 4px solid #28a745;
+    }
+    
+    .review-card.received {
+        border-left: 4px solid #007bff;
+    }
+    
+    .star-display {
+        color: #ffc107;
+        font-size: 1.2em;
+        margin-bottom: 10px;
+    }
+    
+    .star-display .empty {
+        color: #ddd;
+    }
+    
+    .review-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 15px;
+    }
+    
+    .reviewer-info {
+        display: flex;
+        align-items: center;
+    }
+    
+    .reviewer-avatar {
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        margin-right: 15px;
+    }
+    
+    .food-info {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 15px;
+        border-left: 3px solid #dee2e6;
+    }
+    
+    .review-type-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 15px;
+        font-size: 0.75em;
+        font-weight: 600;
+    }
+    
+    .review-type-badge.donor-to-ngo {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    
+    .review-type-badge.ngo-to-donor {
+        background: #f3e5f5;
+        color: #7b1fa2;
+    }
+    
+    .no-reviews {
+        text-align: center;
+        padding: 60px 20px;
+        background: #f8f9fa;
+        border-radius: 15px;
+        color: #6c757d;
+    }
+    
+    .no-reviews i {
+        font-size: 4em;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+    
+    .stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    
+    .stats-card h3 {
+        margin: 0;
+        font-size: 2.5em;
+    }
+    
+    .stats-card p {
+        margin: 5px 0 0 0;
+        opacity: 0.9;
+    }
+    
+    .btn-view-claim {
+        background: #007bff;
+        border: none;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        font-size: 0.9em;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-view-claim:hover {
+        background: #0056b3;
+        transform: translateY(-1px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="reviews-container">
+        <div class="text-center mb-4">
+            <h1 class="h2">My Reviews</h1>
+            <p class="text-muted">Manage and view your pickup reviews</p>
+        </div>
+        
+        <!-- Statistics -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h3>{{ given_reviews|length }}</h3>
+                    <p>Reviews Given</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h3>{{ received_reviews|length }}</h3>
+                    <p>Reviews Received</p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="stats-card">
+                    <h3>
+                        {% if received_reviews %}
+                            {{ "%.1f"|format((received_reviews | map(attribute='rating') | sum) / received_reviews|length) }}
+                        {% else %}
+                            0.0
+                        {% endif %}
+                    </h3>
+                    <p>Average Rating</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <button class="tab-btn active" onclick="switchTab('given')">
+                <i class="bi bi-send"></i> Reviews Given ({{ given_reviews|length }})
+            </button>
+            <button class="tab-btn" onclick="switchTab('received')">
+                <i class="bi bi-inbox"></i> Reviews Received ({{ received_reviews|length }})
+            </button>
+        </div>
+        
+        <!-- Reviews Given Tab -->
+        <div id="given-tab" class="tab-content active">
+            {% if given_reviews %}
+                {% for review in given_reviews %}
+                <div class="review-card given">
+                    <div class="review-header">
+                        <div class="reviewer-info">
+                            <div class="reviewer-avatar">
+                                {{ review.to_user.username[0].upper() }}
+                            </div>
+                            <div>
+                                <h5 class="mb-1">
+                                    Review of {{ review.to_user.organization or review.to_user.username }}
+                                    {% if review.to_user.role == 'ngo' %}
+                                        <span class="review-type-badge donor-to-ngo">NGO</span>
+                                    {% else %}
+                                        <span class="review-type-badge ngo-to-donor">Donor</span>
+                                    {% endif %}
+                                </h5>
+                                <small class="text-muted">
+                                    <i class="bi bi-clock"></i> {{ review.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                                </small>
+                            </div>
+                        </div>
+                        <div class="star-display">
+                            {% for i in range(5) %}
+                                {% if i < review.rating %}
+                                    <span class="filled">★</span>
+                                {% else %}
+                                    <span class="empty">★</span>
+                                {% endif %}
+                            {% endfor %}
+                            <span class="ms-1">({{ review.rating }}/5)</span>
+                        </div>
+                    </div>
+                    
+                    {% if review.comment %}
+                    <div class="mb-3">
+                        <p class="mb-0">{{ review.comment }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="food-info">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ review.claim.food_listing.title }}</strong><br>
+                                <small class="text-muted">
+                                    <i class="bi bi-calendar"></i> {{ review.claim.pickup_time.strftime('%B %d, %Y') }} • 
+                                    <i class="bi bi-geo-alt"></i> {{ review.claim.food_listing.location }}
+                                </small>
+                            </div>
+                            <a href="{{ url_for('view_reviews', claim_id=review.claim.id) }}" class="btn btn-view-claim">
+                                View Details
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-reviews">
+                    <i class="bi bi-send"></i>
+                    <h4>No Reviews Given</h4>
+                    <p>You haven't reviewed any pickups yet. After completing a pickup, you can share your experience!</p>
+                </div>
+            {% endif %}
+        </div>
+        
+        <!-- Reviews Received Tab -->
+        <div id="received-tab" class="tab-content">
+            {% if received_reviews %}
+                {% for review in received_reviews %}
+                <div class="review-card received">
+                    <div class="review-header">
+                        <div class="reviewer-info">
+                            <div class="reviewer-avatar">
+                                {{ review.from_user.username[0].upper() }}
+                            </div>
+                            <div>
+                                <h5 class="mb-1">
+                                    Review from {{ review.from_user.organization or review.from_user.username }}
+                                    {% if review.from_user.role == 'donor' %}
+                                        <span class="review-type-badge donor-to-ngo">Donor</span>
+                                    {% else %}
+                                        <span class="review-type-badge ngo-to-donor">NGO</span>
+                                    {% endif %}
+                                </h5>
+                                <small class="text-muted">
+                                    <i class="bi bi-clock"></i> {{ review.created_at.strftime('%B %d, %Y at %I:%M %p') }}
+                                </small>
+                            </div>
+                        </div>
+                        <div class="star-display">
+                            {% for i in range(5) %}
+                                {% if i < review.rating %}
+                                    <span class="filled">★</span>
+                                {% else %}
+                                    <span class="empty">★</span>
+                                {% endif %}
+                            {% endfor %}
+                            <span class="ms-1">({{ review.rating }}/5)</span>
+                        </div>
+                    </div>
+                    
+                    {% if review.comment %}
+                    <div class="mb-3">
+                        <p class="mb-0">{{ review.comment }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="food-info">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ review.claim.food_listing.title }}</strong><br>
+                                <small class="text-muted">
+                                    <i class="bi bi-calendar"></i> {{ review.claim.pickup_time.strftime('%B %d, %Y') }} • 
+                                    <i class="bi bi-geo-alt"></i> {{ review.claim.food_listing.location }}
+                                </small>
+                            </div>
+                            <a href="{{ url_for('view_reviews', claim_id=review.claim.id) }}" class="btn btn-view-claim">
+                                View Details
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="no-reviews">
+                    <i class="bi bi-inbox"></i>
+                    <h4>No Reviews Received</h4>
+                    <p>You haven't received any reviews yet. Reviews will appear here after other users review your pickups!</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(tabName) {
+    // Hide all tabs
+    document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    
+    // Remove active class from all buttons
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    
+    // Show selected tab
+    document.getElementById(tabName + '-tab').classList.add('active');
+    
+    // Add active class to clicked button
+    event.target.classList.add('active');
+}
+
+// Animate cards on load
+document.addEventListener('DOMContentLoaded', function() {
+    const reviewCards = document.querySelectorAll('.review-card');
+    reviewCards.forEach((card, index) => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        
+        setTimeout(() => {
+            card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+        }, index * 100);
+    });
+});
+</script>
+{% endblock %}

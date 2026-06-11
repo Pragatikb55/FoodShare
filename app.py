@@ -1,4 +1,5 @@
 # app.py
+# Module 0 - Common Foundation imports - Authentication & User Profile
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, make_response, abort, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
@@ -14,11 +15,13 @@ import io
 from dotenv import load_dotenv
 from itsdangerous import URLSafeTimedSerializer as Serializer
 
+# Module 0 - Load environment variables for configuration
 load_dotenv()
 
+# Module 0 - Initialize Flask application
 app = Flask(__name__)
 
-# Configuration
+# Module 0 - Configuration settings for the application
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-this')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///food_waste.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -27,7 +30,7 @@ app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HT
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-# Email settings
+# Module 0 - Email configuration settings
 app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
 app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 587))
 app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'True').lower() == 'true'
@@ -35,12 +38,12 @@ app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME', 'noreply@foodshare.com'
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD', 'password')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'noreply@foodshare.com')
 
-# File upload
+# Module 0 - File upload configuration
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Initialize extensions
+# Module 0 - Initialize Flask extensions
 db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -48,33 +51,25 @@ login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
 mail = Mail(app)
 
-# Database Models
+# Module 0 - Database Models for User Authentication and Profiles
 class User(UserMixin, db.Model):
+    # Module 0 - Base user authentication fields
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
     role = db.Column(db.String(20), nullable=False)  # 'donor', 'ngo'
-    organization = db.Column(db.String(200))
-    phone = db.Column(db.String(20))
-    address = db.Column(db.Text)
-    city = db.Column(db.String(100))
-    state = db.Column(db.String(50))
-    zip_code = db.Column(db.String(20))
-    latitude = db.Column(db.Float)
-    longitude = db.Column(db.Float)
-    verified = db.Column(db.Boolean, default=False)
     is_active = db.Column(db.Boolean, default=True)
-    is_admin = db.Column(db.Boolean, default=False)
     profile_pic = db.Column(db.String(200), default='default.jpg')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
     
-    # Relationships
+    # Module 0 - User relationships
     food_listings = db.relationship('FoodListing', backref='donor', lazy=True, cascade='all, delete-orphan')
     claims = db.relationship('Claim', backref='receiver', lazy=True, cascade='all, delete-orphan')
     notifications = db.relationship('Notification', backref='user', lazy=True, cascade='all, delete-orphan')
     
+    # Module 0 - User authentication methods
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
     
@@ -103,10 +98,52 @@ class User(UserMixin, db.Model):
             user_id = s.loads(token)['user_id']
         except:
             return None
-        return User.query.get(user_id)
+        return db.session.get(User, user_id)
 
-# Separate Admin Model
+# Module 0 - Donor Profile Table - Separate table for donor-specific information
+class Donor(db.Model):
+    # Module 0 - Donor profile fields
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    organization = db.Column(db.String(200))
+    phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
+    city = db.Column(db.String(100))
+    state = db.Column(db.String(50))
+    zip_code = db.Column(db.String(20))
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    verified = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Module 0 - Relationship with User model
+    user = db.relationship('User', backref=db.backref('donor_profile', uselist=False, cascade='all, delete-orphan'))
+
+# Module 0 - NGO Profile Table - Separate table for NGO-specific information  
+class NGO(db.Model):
+    # Module 0 - NGO profile fields
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    organization = db.Column(db.String(200), nullable=False)
+    phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
+    city = db.Column(db.String(100))
+    state = db.Column(db.String(50))
+    zip_code = db.Column(db.String(20))
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    verified = db.Column(db.Boolean, default=False)
+    registration_number = db.Column(db.String(100))
+    ngo_type = db.Column(db.String(100))  # e.g., 'Charity', 'Community Center', 'Shelter'
+    capacity = db.Column(db.Integer)  # Number of people they can serve
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Module 0 - Relationship with User model
+    user = db.relationship('User', backref=db.backref('ngo_profile', uselist=False, cascade='all, delete-orphan'))
+
+# Module 0 - Admin authentication model for admin users
 class Admin(UserMixin, db.Model):
+    # Module 0 - Admin authentication fields
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -118,6 +155,7 @@ class Admin(UserMixin, db.Model):
     last_login = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Module 0 - Admin authentication methods
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
     
@@ -135,9 +173,11 @@ class Admin(UserMixin, db.Model):
             admin_id = s.loads(token)['admin_id']
         except:
             return None
-        return Admin.query.get(admin_id)
+        return db.session.get(Admin, admin_id)
 
+# Module 1 - Donor Operations: Food Listing Model
 class FoodListing(db.Model):
+    # Module 1 - Food donation fields
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
@@ -155,10 +195,13 @@ class FoodListing(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Module 1 - Food listing relationships
     donor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     claims = db.relationship('Claim', backref='food_listing', lazy=True, cascade='all, delete-orphan')
 
+# Module 3 - Transaction & Verification: Claim Model
 class Claim(db.Model):
+    # Module 3 - Claim transaction fields
     id = db.Column(db.Integer, primary_key=True)
     food_listing_id = db.Column(db.Integer, db.ForeignKey('food_listing.id'), nullable=False)
     ngo_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -166,11 +209,13 @@ class Claim(db.Model):
     pickup_time = db.Column(db.DateTime)
     notes = db.Column(db.Text)
     people_served = db.Column(db.Integer)
-    otp_code = db.Column(db.String(6), nullable=True)
+    otp_code = db.Column(db.String(4), nullable=True)
     otp_verified = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# Module 0 - Global Notification Model
 class Notification(db.Model):
+    # Module 0 - Notification fields
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     title = db.Column(db.String(200), nullable=False)
@@ -179,7 +224,9 @@ class Notification(db.Model):
     is_read = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# Module 4 - Fulfillment & Logistics: Review Model
 class Review(db.Model):
+    # Module 4 - Review fields for fulfillment feedback
     id = db.Column(db.Integer, primary_key=True)
     rating = db.Column(db.Integer, nullable=False)
     comment = db.Column(db.Text)
@@ -188,13 +235,79 @@ class Review(db.Model):
     claim_id = db.Column(db.Integer, db.ForeignKey('claim.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# Module 4 - Fulfillment & Logistics: Archive Model
+class ArchiveClaim(db.Model):
+    # Module 4 - Archive completed claims for history and reporting
+    id = db.Column(db.Integer, primary_key=True)
+    original_claim_id = db.Column(db.Integer, nullable=False)  # Reference to original claim
+    food_listing_id = db.Column(db.Integer, db.ForeignKey('food_listing.id'), nullable=False)
+    donor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ngo_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    
+    # Food details (archived from original listing)
+    food_title = db.Column(db.String(200), nullable=False)
+    food_description = db.Column(db.Text)
+    food_type = db.Column(db.String(50))
+    quantity = db.Column(db.Integer, nullable=False)
+    location = db.Column(db.String(200), nullable=False)
+    pickup_address = db.Column(db.Text)
+    
+    # Claim details
+    status = db.Column(db.String(20), default='picked_up')  # Always picked_up for archived
+    people_served = db.Column(db.Integer)
+    otp_verified = db.Column(db.Boolean, default=True)
+    
+    # Timestamps
+    claim_created_at = db.Column(db.DateTime, nullable=False)
+    pickup_time = db.Column(db.DateTime, nullable=False)
+    archived_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Notes and additional info
+    notes = db.Column(db.Text)
+    
+    # Relationships
+    food_listing = db.relationship('FoodListing', backref='archived_claims')
+    donor = db.relationship('User', foreign_keys=[donor_id], backref='donated_archived')
+    ngo = db.relationship('User', foreign_keys=[ngo_id], backref='received_archived')
+
+# Module 5 - Admin & Analytics: City Master Model
+class CityMaster(db.Model):
+    # Module 5 - City management for registration dropdown
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    state = db.Column(db.String(50), nullable=False)
+    country = db.Column(db.String(50), default='India')
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# Module 5 - Admin & Analytics: Report Model
+class Report(db.Model):
+    # Module 5 - Content moderation reports
+    id = db.Column(db.Integer, primary_key=True)
+    food_listing_id = db.Column(db.Integer, db.ForeignKey('food_listing.id'), nullable=False)
+    reporter_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reason = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text)
+    status = db.Column(db.String(20), default='pending')  # pending, reviewed, resolved, dismissed
+    admin_notes = db.Column(db.Text)
+    reviewed_by = db.Column(db.Integer, db.ForeignKey('admin.id'))
+    reviewed_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    food_listing = db.relationship('FoodListing', backref='reports')
+    reporter = db.relationship('User', backref='reports_filed')
+    reviewer = db.relationship('Admin', backref='reports_reviewed')
+
+# Module 0 - User loader for authentication system
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 # Helper functions
 def generate_otp():
-    return ''.join([str(random.randint(0,9)) for _ in range(6)])
+    return ''.join([str(random.randint(0,9)) for _ in range(4)])
 
 def send_email(recipient, subject, body):
     try:
@@ -253,8 +366,6 @@ def login():
             user.last_login = datetime.utcnow()
             db.session.commit()
             flash('Login successful!', 'success')
-            if user.is_admin:
-                return redirect(url_for('admin_dashboard'))
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid email or password', 'danger')
@@ -272,6 +383,10 @@ def register():
         role = request.form.get('role')
         organization = request.form.get('organization', '')
         phone = request.form.get('phone', '')
+        address = request.form.get('address', '')
+        city = request.form.get('city', '')
+        state = request.form.get('state', '')
+        zip_code = request.form.get('zip_code', '')
         
         errors = []
         if password != confirm_password:
@@ -285,15 +400,40 @@ def register():
                 flash(error, 'danger')
             return render_template('register.html')
         
+        # Create base user
         user = User(
             username=username,
             email=email,
-            role=role,
-            organization=organization if role == 'ngo' else None,
-            phone=phone
+            role=role
         )
         user.set_password(password)
         db.session.add(user)
+        db.session.commit()
+        
+        # Create role-specific profile
+        if role == 'donor':
+            donor_profile = Donor(
+                user_id=user.id,
+                organization=organization,
+                phone=phone,
+                address=address,
+                city=city,
+                state=state,
+                zip_code=zip_code
+            )
+            db.session.add(donor_profile)
+        elif role == 'ngo':
+            ngo_profile = NGO(
+                user_id=user.id,
+                organization=organization,
+                phone=phone,
+                address=address,
+                city=city,
+                state=state,
+                zip_code=zip_code
+            )
+            db.session.add(ngo_profile)
+        
         db.session.commit()
         flash('Registration successful! Please login.', 'success')
         return redirect(url_for('login'))
@@ -412,11 +552,37 @@ def dashboard():
 @login_required
 def profile():
     if request.method == 'POST':
+        # Update base user info
         current_user.username = request.form.get('username')
         current_user.email = request.form.get('email')
-        current_user.phone = request.form.get('phone')
-        current_user.organization = request.form.get('organization')
-        current_user.address = request.form.get('address')
+        
+        # Update role-specific profile
+        if current_user.role == 'donor':
+            donor_profile = current_user.donor_profile
+            if donor_profile:
+                donor_profile.organization = request.form.get('organization')
+                donor_profile.phone = request.form.get('phone')
+                donor_profile.address = request.form.get('address')
+                donor_profile.city = request.form.get('city')
+                donor_profile.state = request.form.get('state')
+                donor_profile.zip_code = request.form.get('zip_code')
+                donor_profile.latitude = float(request.form.get('latitude', 0)) if request.form.get('latitude') else None
+                donor_profile.longitude = float(request.form.get('longitude', 0)) if request.form.get('longitude') else None
+        elif current_user.role == 'ngo':
+            ngo_profile = current_user.ngo_profile
+            if ngo_profile:
+                ngo_profile.organization = request.form.get('organization')
+                ngo_profile.phone = request.form.get('phone')
+                ngo_profile.address = request.form.get('address')
+                ngo_profile.city = request.form.get('city')
+                ngo_profile.state = request.form.get('state')
+                ngo_profile.zip_code = request.form.get('zip_code')
+                ngo_profile.latitude = float(request.form.get('latitude', 0)) if request.form.get('latitude') else None
+                ngo_profile.longitude = float(request.form.get('longitude', 0)) if request.form.get('longitude') else None
+                ngo_profile.registration_number = request.form.get('registration_number')
+                ngo_profile.ngo_type = request.form.get('ngo_type')
+                ngo_profile.capacity = int(request.form.get('capacity', 0)) if request.form.get('capacity') else None
+        
         # Handle profile picture
         if 'profile_pic' in request.files:
             file = request.files['profile_pic']
@@ -424,9 +590,11 @@ def profile():
                 filename = secure_filename(f"user_{current_user.id}_{file.filename}")
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                 current_user.profile_pic = filename
+        
         db.session.commit()
         flash('Profile updated.', 'success')
         return redirect(url_for('profile'))
+    
     return render_template('profile.html', user=current_user)
 
 @app.route('/change_password', methods=['POST'])
@@ -508,7 +676,7 @@ def create_listing():
     copy_id = request.args.get('copy_from')
     copy_listing = None
     if copy_id:
-        copy_listing = FoodListing.query.get(copy_id)
+        copy_listing = db.session.get(FoodListing, copy_id)
         if copy_listing and copy_listing.donor_id != current_user.id:
             copy_listing = None
 
@@ -525,8 +693,14 @@ def create_listing():
         latitude = request.form.get('latitude')
         longitude = request.form.get('longitude')
         
-        pickup_start = datetime.fromisoformat(pickup_start_str.replace('Z', '+00:00'))
-        pickup_end = datetime.fromisoformat(pickup_end_str.replace('Z', '+00:00'))
+        # Auto-generate pickup times if not provided
+        if pickup_start_str and pickup_end_str:
+            pickup_start = datetime.fromisoformat(pickup_start_str.replace('Z', '+00:00'))
+            pickup_end = datetime.fromisoformat(pickup_end_str.replace('Z', '+00:00'))
+        else:
+            # Automatic: Start = now, End = +2 hours (using local time)
+            pickup_start = datetime.now()
+            pickup_end = pickup_start + timedelta(hours=2)
         
         listing = FoodListing(
             title=title,
@@ -561,12 +735,19 @@ def create_listing():
         flash('Food listing created successfully!', 'success')
         return redirect(url_for('donor_dashboard'))
     
-    now = datetime.utcnow()
+    now = datetime.now()  # Use local time instead of UTC
     default_start = now.strftime('%Y-%m-%dT%H:%M')
     default_end = (now + timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M')
+    
+    # Also create formatted display times
+    display_start = now.strftime('%b %d, %Y %I:%M %p')
+    display_end = (now + timedelta(hours=2)).strftime('%b %d, %Y %I:%M %p')
+    
     return render_template('donor/create_listing.html',
                          default_start=default_start,
                          default_end=default_end,
+                         display_start=display_start,
+                         display_end=display_end,
                          copy=copy_listing)
 
 @app.route('/my_listings')
@@ -626,6 +807,43 @@ def view_listing(listing_id):
         flash('Access denied', 'danger')
         return redirect(url_for('donor_dashboard'))
     return render_template('donor/view_listing.html', listing=listing)
+
+@app.route('/active_orders')
+@login_required
+def active_orders():
+    if current_user.role != 'donor':
+        flash('Access denied', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Get active orders (claimed listings)
+    active_orders = Claim.query.join(FoodListing)\
+        .filter(FoodListing.donor_id == current_user.id)\
+        .filter(Claim.status.in_(['pending', 'confirmed']))\
+        .filter(FoodListing.pickup_end > datetime.utcnow())\
+        .order_by(FoodListing.pickup_end.asc())\
+        .all()
+    
+    # Filter orders by status for stats
+    pending_orders = [o for o in active_orders if o.status == 'pending']
+    confirmed_orders = [o for o in active_orders if o.status == 'confirmed']
+    ready_orders = [o for o in active_orders if o.status == 'confirmed' and o.food_listing.pickup_start <= datetime.utcnow()]
+    
+    # Get completed pickups today
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    completed_today = Claim.query.join(FoodListing)\
+        .filter(FoodListing.donor_id == current_user.id)\
+        .filter(Claim.status == 'picked_up')\
+        .filter(Claim.pickup_time >= today_start)\
+        .order_by(Claim.pickup_time.desc())\
+        .all()
+    
+    return render_template('donor/active_orders.html', 
+                         active_orders=active_orders,
+                         pending_orders=pending_orders,
+                         confirmed_orders=confirmed_orders,
+                         ready_orders=ready_orders,
+                         completed_today=completed_today,
+                         datetime=datetime)
 
 # =============== NGO ROUTES ===============
 @app.route('/ngo/dashboard')
@@ -705,7 +923,8 @@ def claim_food(listing_id):
     claim = Claim(
         food_listing_id=listing_id,
         ngo_id=current_user.id,
-        status='pending'
+        status='pending',
+        otp_code=generate_otp()  # Generate OTP on claim
     )
     listing.status = 'claimed'
     
@@ -739,6 +958,42 @@ def my_claims():
                          claims=claims,
                          datetime=datetime)
 
+@app.route('/my_pickups')
+@login_required
+def my_pickups():
+    if current_user.role != 'ngo':
+        flash('Access denied', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Get active pickups (pending, confirmed, or recently picked up)
+    active_pickups = Claim.query.filter_by(ngo_id=current_user.id)\
+        .filter(Claim.status.in_(['pending', 'confirmed']))\
+        .join(FoodListing)\
+        .filter(FoodListing.pickup_end > datetime.utcnow())\
+        .order_by(FoodListing.pickup_end.asc())\
+        .all()
+    
+    # Filter pickups by status for stats
+    pending_pickups = [p for p in active_pickups if p.status == 'pending']
+    confirmed_pickups = [p for p in active_pickups if p.status == 'confirmed']
+    ready_pickups = [p for p in active_pickups if p.status == 'confirmed' and p.food_listing.pickup_start <= datetime.utcnow()]
+    
+    # Get completed pickups today
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    completed_today = Claim.query.filter_by(ngo_id=current_user.id)\
+        .filter(Claim.status == 'picked_up')\
+        .filter(Claim.pickup_time >= today_start)\
+        .order_by(Claim.pickup_time.desc())\
+        .all()
+    
+    return render_template('ngo/my_pickups.html', 
+                         active_pickups=active_pickups,
+                         pending_pickups=pending_pickups,
+                         confirmed_pickups=confirmed_pickups,
+                         ready_pickups=ready_pickups,
+                         completed_today=completed_today,
+                         datetime=datetime)
+
 @app.route('/claim/<int:claim_id>/update_status', methods=['POST'])
 @login_required
 def update_claim_status(claim_id):
@@ -762,19 +1017,17 @@ def update_claim_status(claim_id):
         claim.notes = notes
         
         if new_status == 'confirmed':
-            claim.otp_code = generate_otp()
-            print(f"Generated OTP: {claim.otp_code} for claim {claim.id}")  # Debug line
-            # Notify donor
+            # Notify donor (without OTP)
             notification = Notification(
                 user_id=claim.food_listing.donor_id,
                 title='Claim Confirmed',
-                message=f'{current_user.organization} has confirmed pickup for {claim.food_listing.title}. OTP: {claim.otp_code}',
+                message=f'{current_user.organization} has confirmed pickup for {claim.food_listing.title}',
                 notification_type='claim_update'
             )
             db.session.add(notification)
             send_email(claim.food_listing.donor.email,
                        'Pickup Confirmed',
-                       f'NGO {current_user.organization} confirmed they will pick up {claim.food_listing.title}. OTP: {claim.otp_code}')
+                       f'NGO {current_user.organization} confirmed they will pick up {claim.food_listing.title}.')
         elif new_status == 'picked_up':
             claim.pickup_time = datetime.utcnow()
             claim.food_listing.status = 'picked_up'
@@ -818,32 +1071,267 @@ def verify_otp(claim_id):
     claim = Claim.query.get_or_404(claim_id)
     if claim.food_listing.donor_id != current_user.id:
         abort(403)
+    
     data = request.get_json()
     if data.get('otp') == claim.otp_code:
         claim.status = 'picked_up'
         claim.pickup_time = datetime.utcnow()
         claim.food_listing.status = 'picked_up'
         claim.otp_verified = True
+        claim.people_served = data.get('people_served') or claim.food_listing.quantity
         db.session.commit()
-        return jsonify({'success': True})
-    return jsonify({'success': False, 'error': 'Invalid OTP'}), 400
+        
+        # Archive the completed claim
+        archive_claim = ArchiveClaim(
+            original_claim_id=claim.id,
+            food_listing_id=claim.food_listing_id,
+            donor_id=claim.food_listing.donor_id,
+            ngo_id=claim.ngo_id,
+            food_title=claim.food_listing.title,
+            food_description=claim.food_listing.description,
+            food_type=claim.food_listing.food_type,
+            quantity=claim.food_listing.quantity,
+            location=claim.food_listing.location,
+            pickup_address=claim.food_listing.pickup_address,
+            people_served=claim.people_served,
+            claim_created_at=claim.created_at,
+            pickup_time=claim.pickup_time,
+            notes=claim.notes
+        )
+        db.session.add(archive_claim)
+        
+        # Create notification for NGO
+        notification = Notification(
+            user_id=claim.ngo_id,
+            title='Pickup Verified!',
+            message=f'Your pickup for {claim.food_listing.title} has been verified by the donor. Thank you!',
+            notification_type='claim_update'
+        )
+        db.session.add(notification)
+        db.session.commit()
+        
+        # Send confirmation email to NGO
+        send_email(claim.ngo.email,
+                   'Pickup Completed Successfully',
+                   f'Your pickup for {claim.food_listing.title} has been verified by {claim.food_listing.donor.organization or claim.food_listing.donor.username}. Thank you for your service!')
+        
+        return jsonify({
+            'success': True, 
+            'message': 'OTP verified successfully! Pickup completed.',
+            'receipt_url': url_for('generate_receipt', claim_id=claim_id)
+        })
+    else:
+        return jsonify({'success': False, 'message': 'Invalid OTP'})
 
-# =============== ADMIN ROUTES ===============
+@app.route('/verify_otp/<int:claim_id>', methods=['GET', 'POST'])
+@login_required
+def verify_otp_page(claim_id):
+    claim = Claim.query.get_or_404(claim_id)
+    if claim.food_listing.donor_id != current_user.id:
+        flash('Access denied', 'danger')
+        return redirect(url_for('donor_dashboard'))
+    
+    if claim.status != 'confirmed':
+        flash('This claim cannot be verified. Status must be "confirmed".', 'warning')
+        return redirect(url_for('donor_dashboard'))
+    
+    if request.method == 'POST':
+        otp_entered = request.form.get('otp')
+        if otp_entered == claim.otp_code:
+            claim.status = 'picked_up'
+            claim.pickup_time = datetime.utcnow()
+            claim.food_listing.status = 'picked_up'
+            claim.otp_verified = True
+            db.session.commit()
+            
+            # Create notification for NGO
+            notification = Notification(
+                user_id=claim.ngo_id,
+                title='Pickup Verified!',
+                message=f'Your pickup for {claim.food_listing.title} has been verified by the donor.',
+                notification_type='claim_update'
+            )
+            db.session.add(notification)
+            db.session.commit()
+            
+            flash('✅ OTP verified successfully! Pickup confirmed.', 'success')
+            return redirect(url_for('donor_dashboard'))
+        else:
+            flash('❌ Invalid OTP. Please try again.', 'danger')
+    
+    return render_template('donor/verify_otp.html', claim=claim)
+
+@app.route('/receipt/<int:claim_id>')
+@login_required
+def generate_receipt(claim_id):
+    claim = Claim.query.get_or_404(claim_id)
+    
+    # Only donor can view receipt for their own listings
+    if current_user.role != 'donor' or claim.food_listing.donor_id != current_user.id:
+        flash('Access denied', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Only generate receipt for completed pickups
+    if claim.status != 'picked_up':
+        flash('Receipt is only available for completed pickups', 'warning')
+        return redirect(url_for('active_orders'))
+    
+    return render_template('donor/receipt.html', 
+                         claim=claim, 
+                         datetime=datetime)
+
+@app.route('/review/<int:claim_id>')
+@login_required
+def create_review(claim_id):
+    claim = Claim.query.get_or_404(claim_id)
+    
+    # Only allow reviews for completed pickups
+    if claim.status != 'picked_up':
+        flash('Reviews can only be created for completed pickups.', 'warning')
+        return redirect(url_for('dashboard'))
+    
+    # Check if user is involved in this claim (donor or NGO)
+    if current_user.id not in [claim.food_listing.donor_id, claim.ngo_id]:
+        flash('You can only review pickups you were involved in.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Check if review already exists
+    existing_review = Review.query.filter_by(
+        claim_id=claim_id,
+        from_user_id=current_user.id
+    ).first()
+    
+    if existing_review:
+        flash('You have already reviewed this pickup.', 'info')
+        return redirect(url_for('view_reviews', claim_id=claim_id))
+    
+    return render_template('review/create_review.html', claim=claim)
+
+@app.route('/review/<int:claim_id>/submit', methods=['POST'])
+@login_required
+def submit_review(claim_id):
+    claim = Claim.query.get_or_404(claim_id)
+    
+    # Only allow reviews for completed pickups
+    if claim.status != 'picked_up':
+        return jsonify({'success': False, 'message': 'Reviews can only be created for completed pickups.'})
+    
+    # Check if user is involved in this claim
+    if current_user.id not in [claim.food_listing.donor_id, claim.ngo_id]:
+        return jsonify({'success': False, 'message': 'You can only review pickups you were involved in.'})
+    
+    # Check if review already exists
+    existing_review = Review.query.filter_by(
+        claim_id=claim_id,
+        from_user_id=current_user.id
+    ).first()
+    
+    if existing_review:
+        return jsonify({'success': False, 'message': 'You have already reviewed this pickup.'})
+    
+    data = request.get_json()
+    rating = data.get('rating')
+    comment = data.get('comment', '').strip()
+    
+    if not rating or rating < 1 or rating > 5:
+        return jsonify({'success': False, 'message': 'Please provide a valid rating between 1 and 5.'})
+    
+    # Determine who is being reviewed
+    if current_user.id == claim.food_listing.donor_id:
+        # Donor is reviewing NGO
+        to_user_id = claim.ngo_id
+        review_type = 'donor_to_ngo'
+    else:
+        # NGO is reviewing donor
+        to_user_id = claim.food_listing.donor_id
+        review_type = 'ngo_to_donor'
+    
+    review = Review(
+        rating=rating,
+        comment=comment,
+        from_user_id=current_user.id,
+        to_user_id=to_user_id,
+        claim_id=claim_id
+    )
+    
+    db.session.add(review)
+    db.session.commit()
+    
+    # Create notification for the reviewed user
+    reviewed_user = db.session.get(User, to_user_id)
+    notification = Notification(
+        user_id=to_user_id,
+        title='New Review Received',
+        message=f'{current_user.organization or current_user.username} left you a {rating}-star review for {claim.food_listing.title}.',
+        notification_type='review'
+    )
+    db.session.add(notification)
+    db.session.commit()
+    
+    return jsonify({
+        'success': True, 
+        'message': 'Review submitted successfully!',
+        'redirect_url': url_for('view_reviews', claim_id=claim_id)
+    })
+
+@app.route('/reviews/<int:claim_id>')
+@login_required
+def view_reviews(claim_id):
+    claim = Claim.query.get_or_404(claim_id)
+    
+    # Check if user is involved in this claim
+    if current_user.id not in [claim.food_listing.donor_id, claim.ngo_id]:
+        flash('You can only view reviews for pickups you were involved in.', 'danger')
+        return redirect(url_for('dashboard'))
+    
+    # Get all reviews for this claim
+    reviews = Review.query.filter_by(claim_id=claim_id).order_by(Review.created_at.desc()).all()
+    
+    return render_template('review/view_reviews.html', claim=claim, reviews=reviews)
+
+@app.route('/my_reviews')
+@login_required
+def my_reviews():
+    # Get reviews given by current user
+    given_reviews = Review.query.filter_by(from_user_id=current_user.id)\
+        .order_by(Review.created_at.desc()).all()
+    
+    # Get reviews received by current user
+    received_reviews = Review.query.filter_by(to_user_id=current_user.id)\
+        .order_by(Review.created_at.desc()).all()
+    
+    return render_template('review/my_reviews.html', 
+                         given_reviews=given_reviews,
+                         received_reviews=received_reviews)
+
 @app.route('/admin')
 @admin_login_required
 def admin_dashboard():
     admin_id = session.get('admin_id')
-    admin = Admin.query.get(admin_id)
+    admin = db.session.get(Admin, admin_id)
     total_users = User.query.count()
     total_listings = FoodListing.query.count()
     total_claims = Claim.query.count()
     pending_ngos = User.query.filter_by(role='ngo', verified=False).count()
+    
+    # Get monthly donation data for the chart
+    from sqlalchemy import extract
+    current_year = datetime.now().year
+    monthly_donations = []
+    for month in range(1, 4):  # Jan, Feb, Mar for the chart
+        donations_count = FoodListing.query.filter(
+            extract('year', FoodListing.created_at) == current_year,
+            extract('month', FoodListing.created_at) == month
+        ).count()
+        monthly_donations.append(donations_count)
+    
     return render_template('admin/dashboard.html',
                            admin=admin,
                            total_users=total_users,
                            total_listings=total_listings,
                            total_claims=total_claims,
-                           pending_ngos=pending_ngos)
+                           pending_ngos=pending_ngos,
+                           monthly_donations=monthly_donations)
 
 @app.route('/admin/users')
 @admin_login_required
@@ -860,14 +1348,196 @@ def verify_ngo(user_id):
     flash(f'{user.organization} verified.', 'success')
     return redirect(url_for('admin_users'))
 
+@app.route('/admin/ngo_verification')
+@admin_login_required
+def ngo_verification():
+    admin_id = session.get('admin_id')
+    admin = db.session.get(Admin, admin_id)
+    
+    # Get all NGOs with their profiles
+    ngos = db.session.query(User, NGO).join(NGO, User.id == NGO.user_id).filter(User.role == 'ngo').all()
+    
+    return render_template('admin/ngo_verification.html', admin=admin, ngos=ngos)
+
+@app.route('/admin/ngo/<int:user_id>/toggle_status', methods=['POST'])
+@admin_login_required
+def toggle_ngo_status(user_id):
+    user = User.query.get_or_404(user_id)
+    ngo_profile = NGO.query.filter_by(user_id=user_id).first()
+    
+    if not ngo_profile:
+        flash('NGO profile not found.', 'danger')
+        return redirect(url_for('ngo_verification'))
+    
+    # Toggle verification status
+    ngo_profile.verified = not ngo_profile.verified
+    db.session.commit()
+    
+    status = "verified" if ngo_profile.verified else "unverified"
+    flash(f'{user.organization} has been {status}.', 'success')
+    
+    # Send notification to NGO
+    notification = Notification(
+        user_id=user_id,
+        title='Verification Status Updated',
+        message=f'Your NGO verification status has been {status}.',
+        notification_type='admin_update'
+    )
+    db.session.add(notification)
+    db.session.commit()
+    
+    return redirect(url_for('ngo_verification'))
+
+@app.route('/admin/ngo/<int:user_id>/view_documents')
+@admin_login_required
+def view_ngo_documents(user_id):
+    user = User.query.get_or_404(user_id)
+    ngo_profile = NGO.query.filter_by(user_id=user_id).first()
+    
+    if not ngo_profile:
+        flash('NGO profile not found.', 'danger')
+        return redirect(url_for('ngo_verification'))
+    
+    return render_template('admin/view_ngo_documents.html', user=user, ngo_profile=ngo_profile)
+
 @app.route('/admin/toggle_user/<int:user_id>', methods=['POST'])
 @admin_login_required
 def toggle_user(user_id):
     user = User.query.get_or_404(user_id)
     user.is_active = not user.is_active
     db.session.commit()
-    flash(f'User {user.username} {"activated" if user.is_active else "deactivated"}.', 'success')
+    
+    action = "banned" if not user.is_active else "unbanned"
+    flash(f'User {user.username} has been {action}.', 'success')
+    
+    # Log the action
+    admin_id = session.get('admin_id')
+    admin = db.session.get(Admin, admin_id)
+    
+    # Send notification to user if they were banned
+    if not user.is_active:
+        notification = Notification(
+            user_id=user_id,
+            title='Account Suspended',
+            message='Your account has been suspended by the administrator. Please contact support for more information.',
+            notification_type='admin_action'
+        )
+        db.session.add(notification)
+    
+    db.session.commit()
     return redirect(url_for('admin_users'))
+
+@app.route('/admin/user_management')
+@admin_login_required
+def user_management():
+    admin_id = session.get('admin_id')
+    admin = db.session.get(Admin, admin_id)
+    
+    # Get all users with their profiles
+    users = User.query.order_by(User.created_at.desc()).all()
+    
+    return render_template('admin/user_management.html', admin=admin, users=users)
+
+@app.route('/admin/city_master')
+@admin_login_required
+def city_master():
+    admin_id = session.get('admin_id')
+    admin = db.session.get(Admin, admin_id)
+    
+    cities = CityMaster.query.order_by(CityMaster.state, CityMaster.name).all()
+    
+    return render_template('admin/city_master.html', admin=admin, cities=cities)
+
+@app.route('/admin/city_master/add', methods=['POST'])
+@admin_login_required
+def add_city():
+    name = request.form.get('name', '').strip()
+    state = request.form.get('state', '').strip()
+    country = request.form.get('country', 'India').strip()
+    
+    if not name or not state:
+        flash('City name and state are required.', 'danger')
+        return redirect(url_for('city_master'))
+    
+    # Check if city already exists
+    existing_city = CityMaster.query.filter_by(name=name, state=state).first()
+    if existing_city:
+        flash('City already exists in this state.', 'warning')
+        return redirect(url_for('city_master'))
+    
+    city = CityMaster(name=name, state=state, country=country)
+    db.session.add(city)
+    db.session.commit()
+    
+    flash(f'City {name}, {state} added successfully.', 'success')
+    return redirect(url_for('city_master'))
+
+@app.route('/admin/city_master/<int:city_id>/edit', methods=['POST'])
+@admin_login_required
+def edit_city(city_id):
+    city = CityMaster.query.get_or_404(city_id)
+    
+    name = request.form.get('name', '').strip()
+    state = request.form.get('state', '').strip()
+    country = request.form.get('country', 'India').strip()
+    is_active = request.form.get('is_active') == 'on'
+    
+    if not name or not state:
+        flash('City name and state are required.', 'danger')
+        return redirect(url_for('city_master'))
+    
+    # Check if another city with same name/state exists
+    existing_city = CityMaster.query.filter(
+        CityMaster.name == name,
+        CityMaster.state == state,
+        CityMaster.id != city_id
+    ).first()
+    
+    if existing_city:
+        flash('Another city with the same name and state already exists.', 'warning')
+        return redirect(url_for('city_master'))
+    
+    city.name = name
+    city.state = state
+    city.country = country
+    city.is_active = is_active
+    city.updated_at = datetime.utcnow()
+    
+    db.session.commit()
+    
+    flash(f'City {name}, {state} updated successfully.', 'success')
+    return redirect(url_for('city_master'))
+
+@app.route('/admin/city_master/<int:city_id>/delete', methods=['POST'])
+@admin_login_required
+def delete_city(city_id):
+    city = CityMaster.query.get_or_404(city_id)
+    
+    # Check if city is being used by any users
+    users_using_city = User.query.filter_by(city=city.name).count()
+    if users_using_city > 0:
+        flash(f'Cannot delete city. {users_using_city} users are currently using this city.', 'danger')
+        return redirect(url_for('city_master'))
+    
+    city_name = city.name
+    db.session.delete(city)
+    db.session.commit()
+    
+    flash(f'City {city_name} deleted successfully.', 'success')
+    return redirect(url_for('city_master'))
+
+@app.route('/admin/city_master/<int:city_id>/toggle', methods=['POST'])
+@admin_login_required
+def toggle_city(city_id):
+    city = CityMaster.query.get_or_404(city_id)
+    
+    city.is_active = not city.is_active
+    city.updated_at = datetime.utcnow()
+    db.session.commit()
+    
+    status = "activated" if city.is_active else "deactivated"
+    flash(f'City {city.name} has been {status}.', 'success')
+    return redirect(url_for('city_master'))
 
 @app.route('/admin/listings')
 @admin_login_required
@@ -875,29 +1545,498 @@ def admin_listings():
     listings = FoodListing.query.order_by(FoodListing.created_at.desc()).all()
     return render_template('admin/listing.html', listings=listings)
 
-@app.route('/admin/delete_listing/<int:listing_id>', methods=['POST'])
+@app.route('/admin/claims')
 @admin_login_required
-def admin_delete_listing(listing_id):
+def admin_claims():
+    claims = Claim.query.order_by(Claim.created_at.desc()).all()
+    return render_template('admin/claims.html', claims=claims)
+
+@app.route('/admin/reports')
+@admin_login_required
+def admin_reports():
+    # Get statistics for reports
+    total_users = User.query.count()
+    total_donors = User.query.filter_by(role='donor').count()
+    total_ngos = User.query.filter_by(role='ngo').count()
+    total_listings = FoodListing.query.count()
+    total_claims = Claim.query.count()
+    completed_claims = Claim.query.filter_by(status='picked_up').count()
+    
+    # Calculate total meals donated and claimed (Impact Analytics)
+    total_meals_donated = db.session.query(db.func.sum(FoodListing.quantity)).scalar() or 0
+    total_meals_claimed = db.session.query(db.func.sum(Claim.people_served)).scalar() or 0
+    total_meals_distributed = db.session.query(db.func.sum(Claim.people_served))\
+        .filter(Claim.status == 'picked_up').scalar() or 0
+    
+    # Calculate impact metrics
+    avg_meals_per_donation = total_meals_donated / total_listings if total_listings > 0 else 0
+    fulfillment_rate = (completed_claims / total_claims * 100) if total_claims > 0 else 0
+    
+    # Get monthly data for charts with enhanced metrics
+    from sqlalchemy import extract
+    current_year = datetime.now().year
+    
+    monthly_donations = []
+    monthly_meals = []
+    monthly_distributed = []
+    monthly_claims = []
+    
+    for month in range(1, 13):
+        # Donations count
+        donations_count = FoodListing.query.filter(
+            extract('year', FoodListing.created_at) == current_year,
+            extract('month', FoodListing.created_at) == month
+        ).count()
+        monthly_donations.append(donations_count)
+        
+        # Meals donated (SUM aggregation)
+        meals_donated = db.session.query(db.func.sum(FoodListing.quantity)).filter(
+            extract('year', FoodListing.created_at) == current_year,
+            extract('month', FoodListing.created_at) == month
+        ).scalar() or 0
+        monthly_meals.append(meals_donated)
+        
+        # Meals distributed (SUM aggregation where status=Distributed)
+        meals_distributed = db.session.query(db.func.sum(Claim.people_served)).filter(
+            extract('year', Claim.pickup_time) == current_year,
+            extract('month', Claim.pickup_time) == month,
+            Claim.status == 'picked_up'
+        ).scalar() or 0
+        monthly_distributed.append(meals_distributed)
+        
+        # Claims count
+        claims_count = Claim.query.filter(
+            extract('year', Claim.created_at) == current_year,
+            extract('month', Claim.created_at) == month
+        ).count()
+        monthly_claims.append(claims_count)
+    
+    # City-wise distribution
+    city_stats = db.session.query(
+        FoodListing.location,
+        db.func.count(FoodListing.id).label('donations'),
+        db.func.sum(FoodListing.quantity).label('meals')
+    ).group_by(FoodListing.location).order_by(db.desc('meals')).limit(10).all()
+    
+    # Top donors by impact
+    top_donors = db.session.query(
+        User.username,
+        db.func.count(FoodListing.id).label('donations'),
+        db.func.sum(FoodListing.quantity).label('meals')
+    ).join(FoodListing, User.id == FoodListing.donor_id)\
+     .group_by(User.id, User.username)\
+     .order_by(db.desc('meals')).limit(10).all()
+    
+    # Top NGOs by meals served
+    top_ngos = db.session.query(
+        User.username,
+        db.func.count(Claim.id).label('pickups'),
+        db.func.sum(Claim.people_served).label('meals_served')
+    ).join(Claim, User.id == Claim.ngo_id)\
+     .filter(Claim.status == 'picked_up')\
+     .group_by(User.id, User.username)\
+     .order_by(db.desc('meals_served')).limit(10).all()
+    
+    # Get recent activity
+    recent_listings = FoodListing.query.order_by(FoodListing.created_at.desc()).limit(5).all()
+    recent_claims = Claim.query.order_by(Claim.created_at.desc()).limit(5).all()
+    
+    return render_template('admin/reports.html',
+                           total_users=total_users,
+                           total_donors=total_donors,
+                           total_ngos=total_ngos,
+                           total_listings=total_listings,
+                           total_claims=total_claims,
+                           completed_claims=completed_claims,
+                           total_meals_donated=total_meals_donated,
+                           total_meals_claimed=total_meals_claimed,
+                           total_meals_distributed=total_meals_distributed,
+                           avg_meals_per_donation=avg_meals_per_donation,
+                           fulfillment_rate=fulfillment_rate,
+                           monthly_donations=monthly_donations,
+                           monthly_meals=monthly_meals,
+                           monthly_distributed=monthly_distributed,
+                           monthly_claims=monthly_claims,
+                           city_stats=city_stats,
+                           top_donors=top_donors,
+                           top_ngos=top_ngos,
+                           recent_listings=recent_listings,
+                           recent_claims=recent_claims,
+                           current_year=current_year)
     listing = FoodListing.query.get_or_404(listing_id)
     db.session.delete(listing)
     db.session.commit()
     flash('Listing deleted.', 'success')
     return redirect(url_for('admin_listings'))
 
+@app.route('/admin/notifications')
+@admin_login_required
+def admin_notifications():
+    admin_id = session.get('admin_id')
+    admin = db.session.get(Admin, admin_id)
+    
+    # Get all notifications with user information
+    notifications = db.session.query(Notification, User)\
+        .join(User, Notification.user_id == User.id)\
+        .order_by(Notification.created_at.desc()).all()
+    
+    return render_template('admin/notifications.html', admin=admin, notifications=notifications)
+
 @app.route('/admin/export')
 @admin_login_required
 def export_data():
+    export_type = request.args.get('type', 'listings')
+    month = request.args.get('month')
+    year = request.args.get('year', datetime.now().year)
+    
+    if export_type == 'listings':
+        return export_listings(month, year)
+    elif export_type == 'claims':
+        return export_claims(month, year)
+    elif export_type == 'impact':
+        return export_impact_report(month, year)
+    elif export_type == 'users':
+        return export_users()
+    else:
+        return export_listings(month, year)
+
+def export_listings(month=None, year=None):
     si = io.StringIO()
     cw = csv.writer(si)
-    cw.writerow(['ID', 'Title', 'Quantity', 'Status', 'Donor', 'Created At'])
-    listings = FoodListing.query.all()
-    for l in listings:
-        cw.writerow([l.id, l.title, l.quantity, l.status, l.donor.username, l.created_at])
+    
+    headers = ['ID', 'Title', 'Description', 'Food Type', 'Quantity', 'Location', 
+               'Pickup Address', 'Pickup Start', 'Pickup End', 'Status', 
+               'Donor Name', 'Donor Email', 'Donor Phone', 'Created At']
+    cw.writerow(headers)
+    
+    query = FoodListing.query
+    if month and year:
+        from sqlalchemy import extract
+        query = query.filter(
+            extract('year', FoodListing.created_at) == int(year),
+            extract('month', FoodListing.created_at) == int(month)
+        )
+    
+    listings = query.order_by(FoodListing.created_at.desc()).all()
+    
+    for listing in listings:
+        donor_name = listing.donor.organization or listing.donor.username
+        donor_phone = listing.donor.donor_profile.phone if listing.donor.donor_profile else ''
+        
+        row = [
+            listing.id,
+            listing.title,
+            listing.description or '',
+            listing.food_type or '',
+            listing.quantity,
+            listing.location,
+            listing.pickup_address or '',
+            listing.pickup_start.strftime('%Y-%m-%d %H:%M'),
+            listing.pickup_end.strftime('%Y-%m-%d %H:%M'),
+            listing.status,
+            donor_name,
+            listing.donor.email,
+            donor_phone,
+            listing.created_at.strftime('%Y-%m-%d %H:%M')
+        ]
+        cw.writerow(row)
+    
     output = si.getvalue()
+    filename = f'food_listings_{year or "all"}_{month or "all"}.csv'
+    
     response = make_response(output)
-    response.headers["Content-Disposition"] = "attachment; filename=food_listings.csv"
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
     response.headers["Content-type"] = "text/csv"
     return response
+
+def export_claims(month=None, year=None):
+    si = io.StringIO()
+    cw = csv.writer(si)
+    
+    headers = ['Claim ID', 'Food Title', 'Quantity', 'NGO Name', 'NGO Email', 
+               'Donor Name', 'Status', 'People Served', 'Pickup Time', 
+               'OTP Verified', 'Created At']
+    cw.writerow(headers)
+    
+    query = Claim.query.join(FoodListing, Claim.food_listing_id == FoodListing.id)
+    if month and year:
+        from sqlalchemy import extract
+        query = query.filter(
+            extract('year', Claim.created_at) == int(year),
+            extract('month', Claim.created_at) == int(month)
+        )
+    
+    claims = query.order_by(Claim.created_at.desc()).all()
+    
+    for claim in claims:
+        ngo_name = claim.ngo.organization or claim.ngo.username
+        donor_name = claim.food_listing.donor.organization or claim.food_listing.donor.username
+        
+        row = [
+            claim.id,
+            claim.food_listing.title,
+            claim.food_listing.quantity,
+            ngo_name,
+            claim.ngo.email,
+            donor_name,
+            claim.status,
+            claim.people_served or '',
+            claim.pickup_time.strftime('%Y-%m-%d %H:%M') if claim.pickup_time else '',
+            'Yes' if claim.otp_verified else 'No',
+            claim.created_at.strftime('%Y-%m-%d %H:%M')
+        ]
+        cw.writerow(row)
+    
+    output = si.getvalue()
+    filename = f'claims_{year or "all"}_{month or "all"}.csv'
+    
+    response = make_response(output)
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-type"] = "text/csv"
+    return response
+
+def export_impact_report(month=None, year=None):
+    si = io.StringIO()
+    cw = csv.writer(si)
+    
+    # Impact summary
+    cw.writerow(['IMPACT ANALYSIS REPORT'])
+    cw.writerow(['Generated:', datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+    cw.writerow(['Period:', f'{month or "All"}-{year or "All"}'])
+    cw.writerow([])
+    
+    # Summary statistics
+    total_meals = db.session.query(db.func.sum(FoodListing.quantity))
+    if month and year:
+        from sqlalchemy import extract
+        total_meals = total_meals.filter(
+            extract('year', FoodListing.created_at) == int(year),
+            extract('month', FoodListing.created_at) == int(month)
+        )
+    total_meals = total_meals.scalar() or 0
+    
+    total_distributed = db.session.query(db.func.sum(Claim.people_served))
+    if month and year:
+        from sqlalchemy import extract
+        total_distributed = total_distributed.filter(
+            extract('year', Claim.pickup_time) == int(year),
+            extract('month', Claim.pickup_time) == int(month),
+            Claim.status == 'picked_up'
+        )
+    total_distributed = total_distributed.scalar() or 0
+    
+    cw.writerow(['SUMMARY STATISTICS'])
+    cw.writerow(['Total Meals Donated', total_meals])
+    cw.writerow(['Total Meals Distributed', total_distributed])
+    cw.writerow(['Impact Rate (%)', f'{(total_distributed/total_meals*100):.1f}%' if total_meals > 0 else '0%'])
+    cw.writerow([])
+    
+    # City-wise breakdown
+    cw.writerow(['CITY-WISE DISTRIBUTION'])
+    cw.writerow(['City', 'Donations Count', 'Meals Donated'])
+    
+    city_query = db.session.query(
+        FoodListing.location,
+        db.func.count(FoodListing.id).label('donations'),
+        db.func.sum(FoodListing.quantity).label('meals')
+    ).group_by(FoodListing.location)
+    
+    if month and year:
+        from sqlalchemy import extract
+        city_query = city_query.filter(
+            extract('year', FoodListing.created_at) == int(year),
+            extract('month', FoodListing.created_at) == int(month)
+        )
+    
+    city_stats = city_query.order_by(db.desc('meals')).all()
+    
+    for city in city_stats:
+        cw.writerow([city.location, city.donations, city.meals or 0])
+    
+    output = si.getvalue()
+    filename = f'impact_report_{year or "all"}_{month or "all"}.csv'
+    
+    response = make_response(output)
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-type"] = "text/csv"
+    return response
+
+def export_users():
+    si = io.StringIO()
+    cw = csv.writer(si)
+    
+    headers = ['User ID', 'Username', 'Email', 'Role', 'Organization', 'Phone', 
+               'City', 'State', 'Verified', 'Active', 'Created At']
+    cw.writerow(headers)
+    
+    users = User.query.order_by(User.created_at.desc()).all()
+    
+    for user in users:
+        if user.role == 'donor' and user.donor_profile:
+            profile = user.donor_profile
+        elif user.role == 'ngo' and user.ngo_profile:
+            profile = user.ngo_profile
+        else:
+            profile = None
+        
+        row = [
+            user.id,
+            user.username,
+            user.email,
+            user.role,
+            profile.organization if profile else '',
+            profile.phone if profile else '',
+            profile.city if profile else '',
+            profile.state if profile else '',
+            'Yes' if (profile and hasattr(profile, 'verified') and profile.verified) else 'No',
+            'Yes' if user.is_active else 'No',
+            user.created_at.strftime('%Y-%m-%d %H:%M')
+        ]
+        cw.writerow(row)
+    
+    output = si.getvalue()
+    filename = f'users_{datetime.now().strftime("%Y%m%d")}.csv'
+    
+    response = make_response(output)
+    response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    response.headers["Content-type"] = "text/csv"
+    return response
+
+@app.route('/admin/content_moderation')
+@admin_login_required
+def content_moderation():
+    admin_id = session.get('admin_id')
+    admin = db.session.get(Admin, admin_id)
+    
+    # Get all reports with their listings
+    reports = db.session.query(Report, FoodListing, User)\
+        .join(FoodListing, Report.food_listing_id == FoodListing.id)\
+        .join(User, Report.reporter_id == User.id)\
+        .order_by(Report.created_at.desc()).all()
+    
+    return render_template('admin/content_moderation.html', admin=admin, reports=reports)
+
+@app.route('/admin/report/<int:report_id>/review', methods=['POST'])
+@admin_login_required
+def review_report(report_id):
+    report = Report.query.get_or_404(report_id)
+    action = request.form.get('action')
+    admin_notes = request.form.get('admin_notes', '').strip()
+    
+    admin_id = session.get('admin_id')
+    admin = db.session.get(Admin, admin_id)
+    
+    report.admin_notes = admin_notes
+    report.reviewed_by = admin_id
+    report.reviewed_at = datetime.utcnow()
+    
+    if action == 'delete_post':
+        # Delete the reported food listing
+        listing = report.food_listing
+        listing_title = listing.title
+        
+        # Notify the donor
+        notification = Notification(
+            user_id=listing.donor_id,
+            title='Content Removed',
+            message=f'Your food listing "{listing_title}" has been removed by administrators due to policy violations.',
+            notification_type='admin_action'
+        )
+        db.session.add(notification)
+        
+        # Delete the listing and related claims
+        Claim.query.filter_by(food_listing_id=listing.id).delete()
+        db.session.delete(listing)
+        
+        report.status = 'resolved'
+        flash(f'Food listing "{listing_title}" has been deleted.', 'success')
+        
+    elif action == 'dismiss_report':
+        report.status = 'dismissed'
+        flash('Report has been dismissed.', 'info')
+        
+    elif action == 'warn_user':
+        # Send warning to the donor
+        notification = Notification(
+            user_id=report.food_listing.donor_id,
+            title='Content Warning',
+            message=f'Your food listing "{report.food_listing.title}" has received a warning. Please ensure all content complies with our policies.',
+            notification_type='admin_warning'
+        )
+        db.session.add(notification)
+        
+        report.status = 'reviewed'
+        flash('Warning sent to user.', 'warning')
+    
+    db.session.commit()
+    return redirect(url_for('content_moderation'))
+
+@app.route('/report_listing/<int:listing_id>', methods=['POST'])
+@login_required
+def report_listing(listing_id):
+    listing = FoodListing.query.get_or_404(listing_id)
+    
+    # Check if user already reported this listing
+    existing_report = Report.query.filter_by(
+        food_listing_id=listing_id,
+        reporter_id=current_user.id
+    ).first()
+    
+    if existing_report:
+        flash('You have already reported this listing.', 'warning')
+        return redirect(url_for('available_food'))
+    
+    reason = request.form.get('reason')
+    description = request.form.get('description', '').strip()
+    
+    if not reason:
+        flash('Please provide a reason for reporting.', 'danger')
+        return redirect(url_for('available_food'))
+    
+    report = Report(
+        food_listing_id=listing_id,
+        reporter_id=current_user.id,
+        reason=reason,
+        description=description
+    )
+    
+    db.session.add(report)
+    db.session.commit()
+    
+    flash('Thank you for your report. Our administrators will review it.', 'success')
+    return redirect(url_for('available_food'))
+
+# =============== TTL AUTO-CANCELLATION ===============
+@app.route('/admin/cleanup_expired_claims')
+@admin_login_required
+def cleanup_expired_claims():
+    """Auto-cancel claims older than 2 hours without OTP verification"""
+    expired_time = datetime.utcnow() - timedelta(hours=2)
+    
+    expired_claims = Claim.query.filter(
+        Claim.created_at < expired_time,
+        Claim.status.in_(['pending', 'confirmed']),
+        Claim.otp_verified == False
+    ).all()
+    
+    cancelled_count = 0
+    for claim in expired_claims:
+        claim.status = 'cancelled'
+        claim.food_listing.status = 'available'
+        
+        # Notify NGO about auto-cancellation
+        notification = Notification(
+            user_id=claim.ngo_id,
+            title='Claim Auto-Cancelled',
+            message=f'Your claim for {claim.food_listing.title} was auto-cancelled due to timeout (2 hours)',
+            notification_type='claim_update'
+        )
+        db.session.add(notification)
+        cancelled_count += 1
+    
+    db.session.commit()
+    flash(f'Auto-cancelled {cancelled_count} expired claims.', 'info')
+    return redirect(url_for('admin_dashboard'))
 
 # =============== API ENDPOINTS ===============
 @app.route('/api/notifications')
@@ -924,6 +2063,31 @@ def mark_notification_read(notification_id):
     notification.is_read = True
     db.session.commit()
     return jsonify({'success': True})
+
+@app.route('/api/user/<int:user_id>/contact', methods=['GET'])
+@login_required
+def get_user_contact(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({'success': False, 'error': 'User not found'}), 404
+    
+    # Get user profile information
+    contact_info = {
+        'id': user.id,
+        'username': user.username,
+        'email': user.email,
+        'phone': None,
+        'organization': None
+    }
+    
+    if user.role == 'donor' and user.donor_profile:
+        contact_info['phone'] = user.donor_profile.phone
+        contact_info['organization'] = user.donor_profile.organization
+    elif user.role == 'ngo' and user.ngo_profile:
+        contact_info['phone'] = user.ngo_profile.phone
+        contact_info['organization'] = user.ngo_profile.organization
+    
+    return jsonify({'success': True, 'user': contact_info})
 
 @app.route('/api/listings/<int:listing_id>', methods=['DELETE'])
 @login_required
@@ -997,8 +2161,24 @@ def forbidden_error(error):
 def about():
     return render_template('about.html')
 
-@app.route('/contact')
+@app.route('/contact', methods=['GET', 'POST'])
 def contact():
+    if request.method == 'POST':
+        name = request.form.get('name')
+        email = request.form.get('email')
+        subject = request.form.get('subject')
+        message = request.form.get('message')
+        newsletter = request.form.get('newsletter')
+        
+        # Here you would typically:
+        # 1. Validate the form data
+        # 2. Send an email notification
+        # 3. Save to database
+        # 4. Send confirmation to user
+        
+        flash('Thank you for your message! We will get back to you within 24 hours.', 'success')
+        return redirect(url_for('contact'))
+    
     return render_template('contact.html')
 
 @app.route('/privacy')
@@ -1015,14 +2195,123 @@ def food_safety():
 
 # =============== UTILITY ===============
 def cleanup_expired_listings():
+    # Find all expired listings regardless of current status
     expired_listings = FoodListing.query.filter(
-        FoodListing.status == 'available',
         FoodListing.pickup_end < datetime.utcnow()
     ).all()
+    
     for listing in expired_listings:
-        listing.status = 'expired'
+        # Only update if not already expired
+        if listing.status != 'expired':
+            listing.status = 'expired'
+            
+            # Clean up old "Food Claimed!" notifications for expired listings
+            old_notifications = Notification.query.filter_by(
+                user_id=listing.donor_id,
+                title='Food Claimed!',
+                is_read=False
+            ).all()
+            
+            for notification in old_notifications:
+                if listing.title in notification.message:
+                    # Mark old notification as read and create a new one
+                    notification.is_read = True
+                    
+                    # Create corrected notification
+                    corrected_notification = Notification(
+                        user_id=listing.donor_id,
+                        title='Food Listing Expired',
+                        message=f'Your listing "{listing.title}" has expired and is no longer available.',
+                        notification_type='claim_update'
+                    )
+                    db.session.add(corrected_notification)
+                    break  # Only create one corrected notification per expired listing
+        
     if expired_listings:
         db.session.commit()
+        return len(expired_listings)
+    return 0
+
+def cleanup_expired_claims():
+    """Auto-cancel claims older than 2 hours without OTP verification"""
+    expired_time = datetime.utcnow() - timedelta(hours=2)
+    
+    expired_claims = Claim.query.filter(
+        Claim.created_at < expired_time,
+        Claim.status.in_(['pending', 'confirmed']),
+        Claim.otp_verified == False
+    ).all()
+    
+    cancelled_count = 0
+    for claim in expired_claims:
+        claim.status = 'cancelled'
+        claim.food_listing.status = 'available'
+        
+        # Notify NGO about auto-cancellation
+        notification = Notification(
+            user_id=claim.ngo_id,
+            title='Claim Auto-Cancelled',
+            message=f'Your claim for {claim.food_listing.title} was auto-cancelled due to timeout (2 hours)',
+            notification_type='claim_update'
+        )
+        db.session.add(notification)
+        
+        # Notify donor that the claim was cancelled and food is available again
+        donor_notification = Notification(
+            user_id=claim.food_listing.donor_id,
+            title='Claim Cancelled - Food Available Again',
+            message=f'The claim for {claim.food_listing.title} was cancelled. Your listing is available again.',
+            notification_type='claim_update'
+        )
+        db.session.add(donor_notification)
+        
+        cancelled_count += 1
+    
+    if expired_claims:
+        db.session.commit()
+    return cancelled_count
+
+def cleanup_completed_claims():
+    """Archive and remove completed claims older than 30 days from active table"""
+    cleanup_time = datetime.utcnow() - timedelta(days=30)
+    
+    # Find completed claims older than 30 days that haven't been archived
+    old_completed_claims = Claim.query.filter(
+        Claim.status == 'picked_up',
+        Claim.pickup_time < cleanup_time
+    ).all()
+    
+    archived_count = 0
+    for claim in old_completed_claims:
+        # Check if already archived
+        existing_archive = ArchiveClaim.query.filter_by(original_claim_id=claim.id).first()
+        if not existing_archive:
+            # Archive the claim
+            archive_claim = ArchiveClaim(
+                original_claim_id=claim.id,
+                food_listing_id=claim.food_listing_id,
+                donor_id=claim.food_listing.donor_id,
+                ngo_id=claim.ngo_id,
+                food_title=claim.food_listing.title,
+                food_description=claim.food_listing.description,
+                food_type=claim.food_listing.food_type,
+                quantity=claim.food_listing.quantity,
+                location=claim.food_listing.location,
+                pickup_address=claim.food_listing.pickup_address,
+                people_served=claim.people_served,
+                claim_created_at=claim.created_at,
+                pickup_time=claim.pickup_time,
+                notes=claim.notes
+            )
+            db.session.add(archive_claim)
+            archived_count += 1
+        
+        # Delete the old claim from active table
+        db.session.delete(claim)
+    
+    if old_completed_claims:
+        db.session.commit()
+    return archived_count
 
 # =============== INIT ===============
 db_initialized = False
@@ -1034,20 +2323,21 @@ def init_db():
         db.create_all()
         # Create admin user if not exists
         admin_email = os.getenv('ADMIN_EMAIL', 'admin@example.com')
-        admin = User.query.filter_by(email=admin_email).first()
+        admin = Admin.query.filter_by(email=admin_email).first()
         if not admin:
-            admin = User(
+            admin = Admin(
                 username='admin',
                 email=admin_email,
-                role='donor',
-                is_admin=True,
-                verified=True
+                full_name='System Administrator',
+                role='superadmin'
             )
             admin.set_password(os.getenv('ADMIN_PASSWORD', 'admin123'))
             db.session.add(admin)
             db.session.commit()
         db_initialized = True
     cleanup_expired_listings()
+    cleanup_expired_claims()
+    cleanup_completed_claims()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
