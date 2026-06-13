@@ -54,11 +54,11 @@
                             <button type="button" class="btn btn-outline-warning" id="filterAll" onclick="filterByType('')">
                                 <i class="bi bi-grid"></i> All Food
                             </button>
-                            <button type="button" class="btn btn-outline-primary" id="filterSolid" onclick="filterByType('solid')">
-                                <i class="bi bi-square"></i> Solid
+                            <button type="button" class="btn btn-outline-success" id="filterVeg" onclick="filterByType('veg')">
+                                <i class="bi bi-egg"></i> Veg Only
                             </button>
-                            <button type="button" class="btn btn-outline-info" id="filterLiquid" onclick="filterByType('liquid')">
-                                <i class="bi bi-droplet"></i> Liquid
+                            <button type="button" class="btn btn-outline-danger" id="filterNonVeg" onclick="filterByType('non-veg')">
+                                <i class="bi bi-egg-fried"></i> Non-Veg
                             </button>
                         </div>
                     </div>
@@ -106,16 +106,16 @@
             <div class="col-md-3">
                 <div class="card bg-light">
                     <div class="card-body text-center py-3">
-                        <h6 class="mb-0">Solid Food</h6>
-                        <h3 class="mb-0">{{ listings|selectattr('food_type', 'equalto', 'solid')|list|length }}</h3>
+                        <h6 class="mb-0">Veg Food</h6>
+                        <h3 class="mb-0">{{ listings|selectattr('food_type', 'equalto', 'veg')|list|length }}</h3>
                     </div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="card bg-light">
                     <div class="card-body text-center py-3">
-                        <h6 class="mb-0">Liquid Food</h6>
-                        <h3 class="mb-0">{{ listings|selectattr('food_type', 'equalto', 'liquid')|list|length }}</h3>
+                        <h6 class="mb-0">Non-Veg Food</h6>
+                        <h3 class="mb-0">{{ listings|selectattr('food_type', 'equalto', 'non-veg')|list|length }}</h3>
                     </div>
                 </div>
             </div>
@@ -168,7 +168,15 @@
                     <div class="col-6">
                         <div class="border rounded p-2 text-center">
                             <small class="d-block text-muted">Type</small>
-                            <strong>{{ listing.food_type|title if listing.food_type else 'N/A' }}</strong>
+                            <strong>
+                                {% if listing.food_type == 'veg' %}
+                                    <span class="text-success"><i class="bi bi-egg"></i> Veg</span>
+                                {% elif listing.food_type == 'non-veg' %}
+                                    <span class="text-danger"><i class="bi bi-egg-fried"></i> Non-Veg</span>
+                                {% else %}
+                                    {{ listing.food_type|title if listing.food_type else 'N/A' }}
+                                {% endif %}
+                            </strong>
                         </div>
                     </div>
                     <div class="col-6">
@@ -277,6 +285,21 @@
                         <div class="col-md-6">
                             <h6>Pickup Information</h6>
                             <p><strong>Donor:</strong> {{ listing.donor.organization or listing.donor.username }}</p>
+                            {% if listing.donor.average_rating %}
+                            <p>
+                                <strong>Rating:</strong>
+                                <span class="text-warning">
+                                    {% for i in range(listing.donor.average_rating|round|int) %}
+                                        <i class="bi bi-star-fill"></i>
+                                    {% endfor %}
+                                    {% if listing.donor.average_rating < listing.donor.average_rating|round|int %}
+                                        <i class="bi bi-star-half"></i>
+                                    {% endif %}
+                                    {{ listing.donor.average_rating|round(1) }}
+                                </span>
+                                <small class="text-muted">({{ listing.donor.total_reviews }} reviews)</small>
+                            </p>
+                            {% endif %}
                             <p><strong>Location:</strong> {{ listing.location }}</p>
                             <p><strong>Address:</strong> {{ listing.pickup_address or listing.location }}</p>
                             
@@ -357,12 +380,12 @@
     document.getElementById('searchFood').addEventListener('keyup', filterFood);
     document.getElementById('sortBy').addEventListener('change', sortFood);
 
-    // New function for Solid/Liquid filtering
+    // New function for Veg/Non-Veg filtering
     function filterByType(type) {
         // Update button states
         document.getElementById('filterAll').className = type === '' ? 'btn btn-warning' : 'btn btn-outline-warning';
-        document.getElementById('filterSolid').className = type === 'solid' ? 'btn btn-primary' : 'btn btn-outline-primary';
-        document.getElementById('filterLiquid').className = type === 'liquid' ? 'btn btn-info' : 'btn btn-outline-info';
+        document.getElementById('filterVeg').className = type === 'veg' ? 'btn btn-success' : 'btn btn-outline-success';
+        document.getElementById('filterNonVeg').className = type === 'non-veg' ? 'btn btn-danger' : 'btn btn-outline-danger';
         
         // Filter items
         document.querySelectorAll('.food-item').forEach(item => {

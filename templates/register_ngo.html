@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Register as NGO - FoodShare{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-7">
+        <div class="card shadow">
+            <div class="card-body p-5">
+                <h2 class="text-center mb-4">Register as NGO / Organization</h2>
+                <p class="text-center text-muted mb-4">Charities, Shelters, Food Banks, Volunteers</p>
+                
+                <form method="POST" action="{{ url_for('register') }}">
+                    <input type="hidden" name="role" value="ngo">
+                    
+                    <!-- Organization Info -->
+                    <div class="mb-3">
+                        <label for="organization" class="form-label">Organization Name *</label>
+                        <input type="text" class="form-control" id="organization" name="organization" required>
+                    </div>
+                    
+                    <!-- Basic Info -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="username" class="form-label">Username *</label>
+                            <input type="text" class="form-control" id="username" name="username" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="email" class="form-label">Email Address *</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="phone" class="form-label">Phone Number</label>
+                        <input type="tel" class="form-control" id="phone" name="phone">
+                    </div>
+                    
+                    <!-- Address Info -->
+                    <div class="mb-3">
+                        <label for="address" class="form-label">Address</label>
+                        <textarea class="form-control" id="address" name="address" rows="2"></textarea>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="city" class="form-label">City</label>
+                            <input type="text" class="form-control" id="city" name="city">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="state" class="form-label">State</label>
+                            <input type="text" class="form-control" id="state" name="state">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="zip_code" class="form-label">Zip Code</label>
+                            <input type="text" class="form-control" id="zip_code" name="zip_code">
+                        </div>
+                    </div>
+                    
+                    <!-- Passwords -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="password" class="form-label">Password *</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="confirm_password" class="form-label">Confirm Password *</label>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i> <strong>Note:</strong> NGO accounts require admin approval before activation. You will be notified once your account is approved.
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="terms" required>
+                            <label class="form-check-label" for="terms">
+                                I agree to the <a href="{{ url_for('terms') }}">Terms of Service</a> and <a href="{{ url_for('privacy') }}">Privacy Policy</a>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-warning btn-lg">Create NGO Account</button>
+                    </div>
+                </form>
+                
+                <hr class="my-4">
+                
+                <p class="text-center mb-0">
+                    Already have an account? <a href="{{ url_for('login') }}?role=ngo" class="text-warning">Login here</a>
+                </p>
+                <p class="text-center mt-2">
+                    Want to register as Donor? <a href="{{ url_for('register_donor') }}" class="text-success">Register as Donor</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

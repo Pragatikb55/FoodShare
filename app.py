@@ -14,6 +14,7 @@ import csv
 import io
 from dotenv import load_dotenv
 from itsdangerous import URLSafeTimedSerializer as Serializer
+from PIL import Image
 
 # Module 0 - Load environment variables for configuration
 load_dotenv()
@@ -86,6 +87,19 @@ class User(UserMixin, db.Model):
     @property
     def unread_notifications(self):
         return Notification.query.filter_by(user_id=self.id, is_read=False).count()
+    
+    @property
+    def average_rating(self):
+        """Calculate average rating received by this user"""
+        reviews = Review.query.filter_by(to_user_id=self.id).all()
+        if not reviews:
+            return None
+        return sum(review.rating for review in reviews) / len(reviews)
+    
+    @property
+    def total_reviews(self):
+        """Get total number of reviews received by this user"""
+        return Review.query.filter_by(to_user_id=self.id).count()
     
     def generate_reset_token(self, expires_sec=1800):
         s = Serializer(app.config['SECRET_KEY'], expires_sec)
@@ -195,9 +209,39 @@ class FoodListing(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Module 1 - Freshness calculator fields
+    cooked_time = db.Column(db.DateTime, nullable=True)  # When the food was cooked
+    expires_in_hours = db.Column(db.Integer, default=4)  # Default 4 hours freshness
+    expiry_time = db.Column(db.DateTime, nullable=True)  # Calculated expiry time
+    is_deleted = db.Column(db.Boolean, default=False)  # Soft delete flag
+    
     # Module 1 - Food listing relationships
     donor_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     claims = db.relationship('Claim', backref='food_listing', lazy=True, cascade='all, delete-orphan')
+    
+    def calculate_freshness(self):
+        """Calculate expiry time based on cooked time and freshness duration"""
+        if self.cooked_time and self.expires_in_hours:
+            self.expiry_time = self.cooked_time + timedelta(hours=self.expires_in_hours)
+            return self.expiry_time
+        return None
+    
+    def get_freshness_status(self):
+        """Get current freshness status"""
+        if not self.expiry_time:
+            return "unknown"
+        
+        now = datetime.utcnow()
+        time_remaining = (self.expiry_time - now).total_seconds() / 3600  # hours
+        
+        if time_remaining <= 0:
+            return "expired"
+        elif time_remaining <= 1:
+            return "critical"
+        elif time_remaining <= 2:
+            return "warning"
+        else:
+            return "fresh"
 
 # Module 3 - Transaction & Verification: Claim Model
 class Claim(db.Model):
@@ -342,8 +386,8 @@ app.jinja_env.filters['datetime'] = format_datetime
 
 @app.route('/')
 def index():
-    total_donations = FoodListing.query.count()
-    total_meals = db.session.query(db.func.sum(FoodListing.quantity)).scalar() or 0
+    total_donations = FoodListing.query.filter_by(is_deleted=False).count()
+    total_meals = db.session.query(db.func.sum(FoodListing.quantity)).filter(FoodListing.is_deleted == False).scalar() or 0
     total_ngos = User.query.filter_by(role='ngo').count()
     total_donors = User.query.filter_by(role='donor').count()
     return render_template('index.html', 
@@ -400,11 +444,13 @@ def register():
                 flash(error, 'danger')
             return render_template('register.html')
         
-        # Create base user
+        # Create base user - NGOs are inactive by default (pending approval)
+        is_active = True if role == 'donor' else False
         user = User(
             username=username,
             email=email,
-            role=role
+            role=role,
+            is_active=is_active
         )
         user.set_password(password)
         db.session.add(user)
@@ -435,9 +481,23 @@ def register():
             db.session.add(ngo_profile)
         
         db.session.commit()
-        flash('Registration successful! Please login.', 'success')
+        
+        # Different success messages based on role
+        if role == 'donor':
+            flash('Registration successful! Please login.', 'success')
+        else:
+            flash('Registration successful! Your account is pending admin approval. You will be notified once approved.', 'info')
+        
         return redirect(url_for('login'))
     return render_template('register.html')
+
+@app.route('/register/donor')
+def register_donor():
+    return render_template('register_donor.html')
+
+@app.route('/register/ngo')
+def register_ngo():
+    return render_template('register_ngo.html')
 
 @app.route('/logout')
 @login_required
@@ -583,12 +643,18 @@ def profile():
                 ngo_profile.ngo_type = request.form.get('ngo_type')
                 ngo_profile.capacity = int(request.form.get('capacity', 0)) if request.form.get('capacity') else None
         
-        # Handle profile picture
+        # Handle profile picture with image resizing
         if 'profile_pic' in request.files:
             file = request.files['profile_pic']
             if file.filename != '':
                 filename = secure_filename(f"user_{current_user.id}_{file.filename}")
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                
+                # Open and resize image
+                img = Image.open(file)
+                img = img.resize((300, 300), Image.Resampling.LANCZOS)
+                img.save(filepath, optimize=True, quality=85)
+                
                 current_user.profile_pic = filename
         
         db.session.commit()
@@ -616,28 +682,77 @@ def forgot_password():
         email = request.form.get('email')
         user = User.query.filter_by(email=email).first()
         if user:
-            token = user.generate_reset_token()
-            reset_url = url_for('reset_password', token=token, _external=True)
-            send_email(user.email, 'Password Reset',
-                       f'Click the link to reset your password: {reset_url}')
-            flash('Reset link sent to your email.', 'info')
+            # Generate OTP and store in session with expiry
+            otp = generate_otp()
+            session['reset_otp'] = otp
+            session['reset_email'] = email
+            session['reset_otp_expiry'] = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+            
+            # Send OTP via email
+            send_email(user.email, 'Password Reset OTP',
+                       f'Your OTP for password reset is: {otp}\nThis OTP will expire in 10 minutes.')
+            flash('OTP sent to your email. Please enter it to reset your password.', 'info')
+            return redirect(url_for('verify_reset_otp'))
         else:
             flash('Email not found.', 'danger')
-        return redirect(url_for('login'))
     return render_template('forgot_password.html')
 
-@app.route('/reset_password/<token>', methods=['GET', 'POST'])
-def reset_password(token):
-    user = User.verify_reset_token(token)
-    if not user:
-        flash('Invalid or expired token.', 'danger')
+@app.route('/verify_reset_otp', methods=['GET', 'POST'])
+def verify_reset_otp():
+    if 'reset_otp' not in session:
+        flash('Please request an OTP first.', 'warning')
         return redirect(url_for('forgot_password'))
+    
+    # Check if OTP expired
+    expiry = datetime.fromisoformat(session.get('reset_otp_expiry'))
+    if datetime.utcnow() > expiry:
+        session.pop('reset_otp', None)
+        session.pop('reset_email', None)
+        session.pop('reset_otp_expiry', None)
+        flash('OTP has expired. Please request a new one.', 'danger')
+        return redirect(url_for('forgot_password'))
+    
+    if request.method == 'POST':
+        otp_entered = request.form.get('otp')
+        if otp_entered == session.get('reset_otp'):
+            # OTP verified, redirect to reset password
+            return redirect(url_for('reset_password_with_otp'))
+        else:
+            flash('Invalid OTP. Please try again.', 'danger')
+    
+    return render_template('verify_reset_otp.html')
+
+@app.route('/reset_password_with_otp', methods=['GET', 'POST'])
+def reset_password_with_otp():
+    if 'reset_email' not in session:
+        flash('Session expired. Please start over.', 'warning')
+        return redirect(url_for('forgot_password'))
+    
     if request.method == 'POST':
         password = request.form.get('password')
-        user.set_password(password)
-        db.session.commit()
-        flash('Password reset. Please login.', 'success')
-        return redirect(url_for('login'))
+        confirm_password = request.form.get('confirm_password')
+        
+        if password != confirm_password:
+            flash('Passwords do not match.', 'danger')
+            return render_template('reset_password.html')
+        
+        email = session.get('reset_email')
+        user = User.query.filter_by(email=email).first()
+        if user:
+            user.set_password(password)
+            db.session.commit()
+            
+            # Clear session
+            session.pop('reset_otp', None)
+            session.pop('reset_email', None)
+            session.pop('reset_otp_expiry', None)
+            
+            flash('Password reset successful. Please login.', 'success')
+            return redirect(url_for('login'))
+        else:
+            flash('User not found.', 'danger')
+            return redirect(url_for('forgot_password'))
+    
     return render_template('reset_password.html')
 
 # =============== DONOR ROUTES ===============
@@ -647,16 +762,16 @@ def donor_dashboard():
     if current_user.role != 'donor':
         flash('Access denied', 'danger')
         return redirect(url_for('dashboard'))
-    listings = FoodListing.query.filter_by(donor_id=current_user.id)\
+    listings = FoodListing.query.filter_by(donor_id=current_user.id, is_deleted=False)\
         .order_by(FoodListing.created_at.desc()).limit(5).all()
     claims = Claim.query.join(FoodListing)\
-        .filter(FoodListing.donor_id == current_user.id)\
+        .filter(FoodListing.donor_id == current_user.id, FoodListing.is_deleted == False)\
         .order_by(Claim.created_at.desc()).limit(5).all()
-    total_listings = FoodListing.query.filter_by(donor_id=current_user.id).count()
-    available_listings = FoodListing.query.filter_by(donor_id=current_user.id, status='available').count()
-    claimed_listings = FoodListing.query.filter_by(donor_id=current_user.id, status='claimed').count()
+    total_listings = FoodListing.query.filter_by(donor_id=current_user.id, is_deleted=False).count()
+    available_listings = FoodListing.query.filter_by(donor_id=current_user.id, status='available', is_deleted=False).count()
+    claimed_listings = FoodListing.query.filter_by(donor_id=current_user.id, status='claimed', is_deleted=False).count()
     total_meals_result = db.session.query(db.func.sum(FoodListing.quantity))\
-        .filter(FoodListing.donor_id == current_user.id, FoodListing.status == 'picked_up').first()
+        .filter(FoodListing.donor_id == current_user.id, FoodListing.status == 'picked_up', FoodListing.is_deleted == False).first()
     total_meals = total_meals_result[0] or 0 if total_meals_result else 0
     return render_template('donor/donor_dashboard.html',
                          listings=listings,
@@ -693,6 +808,10 @@ def create_listing():
         latitude = request.form.get('latitude')
         longitude = request.form.get('longitude')
         
+        # Freshness calculator fields
+        cooked_time_str = request.form.get('cooked_time')
+        expires_in_hours = int(request.form.get('expires_in_hours', 4))
+        
         # Auto-generate pickup times if not provided
         if pickup_start_str and pickup_end_str:
             pickup_start = datetime.fromisoformat(pickup_start_str.replace('Z', '+00:00'))
@@ -712,20 +831,32 @@ def create_listing():
             pickup_start=pickup_start,
             pickup_end=pickup_end,
             allergens=allergens,
+            expires_in_hours=expires_in_hours,
             donor_id=current_user.id
         )
+        
+        # Handle cooked time and calculate freshness
+        if cooked_time_str:
+            listing.cooked_time = datetime.fromisoformat(cooked_time_str.replace('Z', '+00:00'))
+            listing.calculate_freshness()
         
         # Add GPS coordinates if provided
         if latitude and longitude:
             listing.latitude = float(latitude)
             listing.longitude = float(longitude)
         
-        # Handle image upload
+        # Handle image upload with compression
         if 'image' in request.files:
             file = request.files['image']
             if file.filename != '':
                 filename = secure_filename(f"food_{datetime.utcnow().timestamp()}_{file.filename}")
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                
+                # Open and compress image
+                img = Image.open(file)
+                img = img.resize((800, 600), Image.Resampling.LANCZOS)
+                img.save(filepath, optimize=True, quality=80)
+                
                 listing.image = filename
         
         db.session.add(listing)
@@ -756,7 +887,7 @@ def my_listings():
     if current_user.role != 'donor':
         flash('Access denied', 'danger')
         return redirect(url_for('dashboard'))
-    listings = FoodListing.query.filter_by(donor_id=current_user.id)\
+    listings = FoodListing.query.filter_by(donor_id=current_user.id, is_deleted=False)\
         .order_by(FoodListing.created_at.desc()).all()
     return render_template('donor/my_listings.html', listings=listings)
 
@@ -793,10 +924,12 @@ def delete_listing(listing_id):
     if listing.donor_id != current_user.id:
         flash('Access denied', 'danger')
         return redirect(url_for('my_listings'))
-    Claim.query.filter_by(food_listing_id=listing.id).delete()
-    db.session.delete(listing)
+    
+    # Soft delete - just mark as deleted instead of removing from database
+    listing.is_deleted = True
+    listing.status = 'removed'
     db.session.commit()
-    flash('Food listing deleted successfully!', 'success')
+    flash('Food listing removed successfully!', 'success')
     return redirect(url_for('donor_dashboard'))
 
 @app.route('/listing/<int:listing_id>/view')
@@ -852,7 +985,7 @@ def ngo_dashboard():
     if current_user.role != 'ngo':
         flash('Access denied', 'danger')
         return redirect(url_for('dashboard'))
-    available_listings = FoodListing.query.filter_by(status='available')\
+    available_listings = FoodListing.query.filter_by(status='available', is_deleted=False)\
         .filter(FoodListing.pickup_end > datetime.utcnow())\
         .order_by(FoodListing.created_at.desc()).limit(3).all()
     my_claims = Claim.query.filter_by(ngo_id=current_user.id)\
@@ -877,7 +1010,7 @@ def available_food():
         flash('Access denied', 'danger')
         return redirect(url_for('dashboard'))
     
-    listings = FoodListing.query.filter_by(status='available')\
+    listings = FoodListing.query.filter_by(status='available', is_deleted=False)\
         .filter(FoodListing.pickup_end > datetime.utcnow())\
         .order_by(FoodListing.created_at.desc()).all()
     
@@ -907,7 +1040,7 @@ def claim_food(listing_id):
         return redirect(url_for('dashboard'))
     
     # Atomic lock to prevent double claim
-    listing = FoodListing.query.filter_by(id=listing_id, status='available').with_for_update().first()
+    listing = FoodListing.query.filter_by(id=listing_id, status='available', is_deleted=False).with_for_update().first()
     if not listing:
         flash('This listing is no longer available', 'danger')
         return redirect(url_for('available_food'))
@@ -1064,6 +1197,33 @@ def reject_claim(claim_id):
     else:
         flash('Cannot reject this claim.', 'danger')
     return redirect(url_for('donor_dashboard'))
+
+@app.route('/claim/<int:claim_id>/cancel', methods=['POST'])
+@login_required
+def cancel_claim(claim_id):
+    if current_user.role != 'ngo':
+        abort(403)
+    claim = Claim.query.get_or_404(claim_id)
+    if claim.ngo_id != current_user.id:
+        abort(403)
+    if claim.status in ['pending', 'confirmed']:
+        claim.status = 'cancelled'
+        claim.food_listing.status = 'available'
+        
+        # Notify donor about cancellation
+        notification = Notification(
+            user_id=claim.food_listing.donor_id,
+            title='Claim Cancelled',
+            message=f'{current_user.organization or current_user.username} has cancelled their claim for {claim.food_listing.title}. The food is now available again.',
+            notification_type='claim_update'
+        )
+        db.session.add(notification)
+        db.session.commit()
+        
+        flash('Claim cancelled successfully. The food is now available again.', 'success')
+    else:
+        flash('Cannot cancel this claim.', 'danger')
+    return redirect(url_for('ngo_dashboard'))
 
 @app.route('/claim/<int:claim_id>/verify_otp', methods=['POST'])
 @login_required
@@ -1357,7 +1517,11 @@ def ngo_verification():
     # Get all NGOs with their profiles
     ngos = db.session.query(User, NGO).join(NGO, User.id == NGO.user_id).filter(User.role == 'ngo').all()
     
-    return render_template('admin/ngo_verification.html', admin=admin, ngos=ngos)
+    # Separate pending and approved NGOs
+    pending_ngos = [(u, n) for u, n in ngos if not u.is_active]
+    approved_ngos = [(u, n) for u, n in ngos if u.is_active]
+    
+    return render_template('admin/ngo_verification.html', admin=admin, pending_ngos=pending_ngos, approved_ngos=approved_ngos)
 
 @app.route('/admin/ngo/<int:user_id>/toggle_status', methods=['POST'])
 @admin_login_required
@@ -1369,20 +1533,32 @@ def toggle_ngo_status(user_id):
         flash('NGO profile not found.', 'danger')
         return redirect(url_for('ngo_verification'))
     
-    # Toggle verification status
-    ngo_profile.verified = not ngo_profile.verified
+    # Toggle activation status
+    user.is_active = not user.is_active
     db.session.commit()
     
-    status = "verified" if ngo_profile.verified else "unverified"
+    status = "approved" if user.is_active else "deactivated"
     flash(f'{user.organization} has been {status}.', 'success')
     
     # Send notification to NGO
-    notification = Notification(
-        user_id=user_id,
-        title='Verification Status Updated',
-        message=f'Your NGO verification status has been {status}.',
-        notification_type='admin_update'
-    )
+    if user.is_active:
+        notification = Notification(
+            user_id=user_id,
+            title='Account Approved',
+            message=f'Your NGO account has been approved! You can now login and start claiming food donations.',
+            notification_type='approval'
+        )
+        # Send email notification
+        send_email(user.email, 'NGO Account Approved',
+                   f'Your NGO account has been approved! You can now login and start claiming food donations.')
+    else:
+        notification = Notification(
+            user_id=user_id,
+            title='Account Deactivated',
+            message=f'Your NGO account has been deactivated by admin.',
+            notification_type='admin_update'
+        )
+    
     db.session.add(notification)
     db.session.commit()
     
@@ -2104,8 +2280,8 @@ def delete_listing_api(listing_id):
 
 @app.route('/api/stats/total_meals')
 def get_total_meals():
-    total_meals = db.session.query(db.func.sum(FoodListing.quantity)).scalar() or 0
-    total_donations = FoodListing.query.count()
+    total_meals = db.session.query(db.func.sum(FoodListing.quantity)).filter(FoodListing.is_deleted == False).scalar() or 0
+    total_donations = FoodListing.query.filter_by(is_deleted=False).count()
     return jsonify({
         'total_meals': total_meals,
         'total_donations': total_donations,
@@ -2116,7 +2292,7 @@ def get_total_meals():
 @app.route('/api/listings/available')
 @login_required
 def get_available_listings():
-    listings = FoodListing.query.filter_by(status='available')\
+    listings = FoodListing.query.filter_by(status='available', is_deleted=False)\
         .filter(FoodListing.pickup_end > datetime.utcnow())\
         .order_by(FoodListing.created_at.desc()).all()
     result = []

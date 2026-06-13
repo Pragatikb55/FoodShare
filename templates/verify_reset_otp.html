@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Verify OTP - FoodShare{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-body p-4">
+                <h2 class="mb-4">Verify OTP</h2>
+                <p>Enter the 4-digit OTP sent to your email to reset your password.</p>
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">OTP</label>
+                        <input type="text" class="form-control" name="otp" pattern="[0-9]{4}" maxlength="4" required placeholder="Enter 4-digit OTP">
+                        <small class="text-muted">OTP expires in 10 minutes</small>
+                    </div>
+                    <button type="submit" class="btn btn-success">Verify OTP</button>
+                    <a href="{{ url_for('forgot_password') }}" class="btn btn-link">Request New OTP</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
