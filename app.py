@@ -405,12 +405,15 @@ def login():
         password = request.form.get('password')
         remember = True if request.form.get('remember') else False
         user = User.query.filter_by(email=email).first()
-        if user and user.check_password(password) and user.is_active:
-            login_user(user, remember=remember)
-            user.last_login = datetime.utcnow()
-            db.session.commit()
-            flash('Login successful!', 'success')
-            return redirect(url_for('dashboard'))
+        if user and user.check_password(password):
+            if user.is_active:
+                login_user(user, remember=remember)
+                user.last_login = datetime.utcnow()
+                db.session.commit()
+                flash('Login successful!', 'success')
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Your account is inactive. Please contact admin for approval.', 'warning')
         else:
             flash('Invalid email or password', 'danger')
     return render_template('login.html')
@@ -452,8 +455,8 @@ def register():
                 flash(error, 'danger')
             return render_template('register.html')
         
-        # Create base user - NGOs are inactive by default (pending approval)
-        is_active = True if role == 'donor' else False
+        # Create base user - NGOs are now active by default for development
+        is_active = True
         user = User(
             username=username,
             email=email,
@@ -527,14 +530,8 @@ def admin_register():
         full_name = request.form.get('full_name')
         password = request.form.get('password')
         confirm_password = request.form.get('confirm_password')
-        admin_key = request.form.get('admin_key')
-        
-        # Admin registration key for security
-        ADMIN_REGISTRATION_KEY = os.getenv('ADMIN_REGISTRATION_KEY', 'admin-secret-key')
         
         errors = []
-        if admin_key != ADMIN_REGISTRATION_KEY:
-            errors.append('Invalid admin registration key')
         if password != confirm_password:
             errors.append('Passwords do not match')
         if Admin.query.filter_by(email=email).first():
@@ -1261,7 +1258,8 @@ def cancel_claim(claim_id):
 @login_required
 def verify_otp(claim_id):
     claim = Claim.query.get_or_404(claim_id)
-    if claim.food_listing.donor_id != current_user.id:
+    # Allow both donor and NGO (who owns the claim) to verify OTP
+    if claim.food_listing.donor_id != current_user.id and claim.ngo_id != current_user.id:
         abort(403)
     
     data = request.get_json()

@@ -59,34 +59,6 @@
                         </div>
                     </div>
                     
-                    <!-- Freshness Calculator -->
-                    <div class="mb-4">
-                        <h5 class="mb-3">Freshness Calculator</h5>
-                        
-                        <div class="mb-3">
-                            <label for="cooked_time" class="form-label">Cooked Time (Optional)</label>
-                            <input type="datetime-local" class="form-control" id="cooked_time" name="cooked_time" 
-                                   value="{{ copy.cooked_time.strftime('%Y-%m-%dT%H:%M') if copy and copy.cooked_time else '' }}">
-                            <small class="text-muted">When was this food cooked? We'll calculate expiry automatically.</small>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label for="expires_in_hours" class="form-label">Freshness Duration (Hours)</label>
-                            <select class="form-select" id="expires_in_hours" name="expires_in_hours" onchange="calculateExpiry()">
-                                <option value="2" {% if copy and copy.expires_in_hours == 2 %}selected{% endif %}>2 hours</option>
-                                <option value="4" {% if not copy or copy.expires_in_hours == 4 %}selected{% endif %}>4 hours (default)</option>
-                                <option value="6" {% if copy and copy.expires_in_hours == 6 %}selected{% endif %}>6 hours</option>
-                                <option value="8" {% if copy and copy.expires_in_hours == 8 %}selected{% endif %}>8 hours</option>
-                                <option value="12" {% if copy and copy.expires_in_hours == 12 %}selected{% endif %}>12 hours</option>
-                                <option value="24" {% if copy and copy.expires_in_hours == 24 %}selected{% endif %}>24 hours</option>
-                            </select>
-                        </div>
-                        
-                        <div id="expiryDisplay" class="alert alert-info" style="display: none;">
-                            <i class="bi bi-clock"></i> <strong>Estimated Expiry:</strong> <span id="expiryTime"></span>
-                        </div>
-                    </div>
-                    
                     <!-- Location & Pickup -->
                     <div class="mb-4">
                         <h5 class="mb-3">Location & Pickup</h5>
@@ -127,7 +99,7 @@
                         </div>
                         
                         <!-- Display Automatic Times -->
-                        <div class="alert alert-info">
+                        <div class="alert alert-info permanent-alert">
                             <h6><i class="bi bi-clock"></i> Automatic Pickup Schedule</h6>
                             <p class="mb-1"><strong>Start Time:</strong> {{ display_start }}</p>
                             <p class="mb-0"><strong>End Time:</strong> {{ display_end }}</p>
@@ -165,27 +137,6 @@
         document.getElementById('previewImg').src = '';
         document.getElementById('imagePreview').style.display = 'none';
     }
-    
-    // Freshness Calculator Function
-    function calculateExpiry() {
-        const cookedTime = document.getElementById('cooked_time').value;
-        const expiresHours = parseInt(document.getElementById('expires_in_hours').value);
-        const expiryDisplay = document.getElementById('expiryDisplay');
-        const expiryTime = document.getElementById('expiryTime');
-        
-        if (cookedTime) {
-            const cookedDate = new Date(cookedTime);
-            const expiryDate = new Date(cookedDate.getTime() + expiresHours * 60 * 60 * 1000);
-            
-            expiryTime.textContent = expiryDate.toLocaleString();
-            expiryDisplay.style.display = 'block';
-        } else {
-            expiryDisplay.style.display = 'none';
-        }
-    }
-    
-    // Calculate expiry when cooked time changes
-    document.getElementById('cooked_time').addEventListener('change', calculateExpiry);
     
     // GPS Location Function
     function getCurrentLocation() {

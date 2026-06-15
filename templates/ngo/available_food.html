@@ -3,6 +3,7 @@
 {% block title %}Available Food - FoodShare{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
     .food-card {
         transition: transform 0.2s, box-shadow 0.2s;
@@ -28,6 +29,116 @@
     .badge-expiring {
         background-color: #fd7e14;
         color: white;
+    }
+    
+    /* Custom Modal Styling */
+    .modal-xl .modal-content {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    
+    .modal-header.bg-warning.bg-opacity-10 {
+        background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.2) 100%);
+        border-bottom: 2px solid #ffc107;
+    }
+    
+    .modal-header .modal-title {
+        font-weight: 600;
+        color: #000;
+    }
+    
+    /* Card Styling in Modal */
+    .modal-body .card {
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .modal-body .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .modal-body .card-header {
+        font-weight: 600;
+        border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+    }
+    
+    .modal-body .card-header.bg-warning.bg-opacity-10 {
+        background: linear-gradient(135deg, rgba(255, 193, 7, 0.1) 0%, rgba(255, 193, 7, 0.2) 100%);
+        border-bottom: 2px solid #ffc107;
+    }
+    
+    .modal-body .card-header.bg-primary.bg-opacity-10 {
+        background: linear-gradient(135deg, rgba(13, 110, 253, 0.1) 0%, rgba(13, 110, 253, 0.2) 100%);
+        border-bottom: 2px solid #0d6efd;
+    }
+    
+    .modal-body .card-header.bg-success.bg-opacity-10 {
+        background: linear-gradient(135deg, rgba(25, 135, 84, 0.1) 0%, rgba(25, 135, 84, 0.2) 100%);
+        border-bottom: 2px solid #198754;
+    }
+    
+    .modal-body .card-header.bg-info.bg-opacity-10 {
+        background: linear-gradient(135deg, rgba(13, 202, 240, 0.1) 0%, rgba(13, 202, 240, 0.2) 100%);
+        border-bottom: 2px solid #0dcaf0;
+    }
+    
+    .modal-body .card-header.bg-secondary.bg-opacity-10 {
+        background: linear-gradient(135deg, rgba(108, 117, 125, 0.1) 0%, rgba(108, 117, 125, 0.2) 100%);
+        border-bottom: 2px solid #6c757d;
+    }
+    
+    /* Map Styling */
+    .modal-body .card-body.p-0 {
+        padding: 0;
+    }
+    
+    .modal-body .card-footer {
+        background: linear-gradient(135deg, rgba(248, 249, 250, 0.9) 0%, rgba(233, 236, 239, 0.9) 100%);
+        border-top: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Food Image Styling */
+    .modal-body .card img {
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Badge Styling */
+    .modal-body .badge {
+        padding: 0.5em 1em;
+        font-weight: 500;
+    }
+    
+    /* Button Styling in Modal */
+    .modal-footer .btn {
+        border-radius: 8px;
+        padding: 0.6rem 1.5rem;
+        font-weight: 500;
+    }
+    
+    .modal-footer .btn-warning {
+        background: linear-gradient(135deg, #ffc107 0%, #ffca2c 100%);
+        border: none;
+        color: #000;
+    }
+    
+    .modal-footer .btn-warning:hover {
+        background: linear-gradient(135deg, #ffca2c 0%, #ffc107 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(255, 193, 7, 0.3);
+    }
+    
+    /* Responsive Map */
+    @media (max-width: 768px) {
+        .modal-body .card-body img {
+            max-height: 150px !important;
+        }
+        
+        .modal-body .card-body .map-container {
+            height: 200px !important;
+        }
     }
 </style>
 {% endblock %}
@@ -123,6 +234,19 @@
     </div>
 </div>
 
+<!-- Location Map -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title mb-3"><i class="bi bi-map"></i> Food Locations Map</h5>
+                <div id="locationsMap" style="height: 400px; width: 100%; border-radius: 8px;"></div>
+                <small class="text-muted">Click on markers to see food details and address</small>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Food Grid -->
 <div class="row" id="foodGrid">
     {% for listing in listings %}
@@ -131,7 +255,12 @@
          data-type="{{ listing.food_type }}"
          data-quantity="{{ listing.quantity }}"
          data-expiry="{{ hours_left }}"
-         data-title="{{ listing.title|lower }}">
+         data-title="{{ listing.title|lower }}"
+         data-listing-id="{{ listing.id }}"
+         data-lat="{{ listing.latitude }}"
+         data-lon="{{ listing.longitude }}"
+         data-location="{{ listing.location }}"
+         data-address="{{ listing.pickup_address }}">
         <div class="card h-100 food-card {% if hours_left < 2 %}urgent{% endif %}">
             {% if listing.image %}
             <img src="{{ url_for('static', filename='uploads/' + listing.image) }}" class="card-img-top" style="height: 180px; object-fit: cover;">
@@ -259,77 +388,126 @@
 
     <!-- Details Modal -->
     <div class="modal fade" id="detailsModal{{ listing.id }}" tabindex="-1">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
-                <div class="modal-header">
+                <div class="modal-header bg-warning bg-opacity-10">
                     <h5 class="modal-title">{{ listing.title }}</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <div class="row">
-                        <div class="col-md-6">
-                            <h6>Food Details</h6>
-                            <p><strong>Type:</strong> {{ listing.food_type|title if listing.food_type else 'Not specified' }}</p>
-                            <p><strong>Quantity:</strong> {{ listing.quantity }} meals</p>
-                            <p><strong>Allergens:</strong> {{ listing.allergens or 'None specified' }}</p>
-                            {% if listing.image %}
-                            <img src="{{ url_for('static', filename='uploads/' + listing.image) }}" class="img-fluid mt-2" style="max-height: 150px;">
-                            {% endif %}
+                        <!-- Left Column: Food Details -->
+                        <div class="col-md-4">
+                            <div class="card mb-3 border-warning">
+                                <div class="card-header bg-warning bg-opacity-10">
+                                    <h6 class="mb-0"><i class="bi bi-basket"></i> Food Details</h6>
+                                </div>
+                                <div class="card-body">
+                                    {% if listing.image %}
+                                    <img src="{{ url_for('static', filename='uploads/' + listing.image) }}" class="img-fluid rounded mb-3" style="max-height: 200px; width: 100%; object-fit: cover;">
+                                    {% endif %}
+                                    <p class="mb-1"><strong>Type:</strong> 
+                                        {% if listing.food_type == 'veg' %}
+                                            <span class="badge bg-success">Veg</span>
+                                        {% elif listing.food_type == 'non-veg' %}
+                                            <span class="badge bg-danger">Non-Veg</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ listing.food_type|title if listing.food_type else 'Not specified' }}</span>
+                                        {% endif %}
+                                    </p>
+                                    <p class="mb-1"><strong>Quantity:</strong> {{ listing.quantity }} meals</p>
+                                    <p class="mb-0"><strong>Allergens:</strong> {{ listing.allergens or 'None specified' }}</p>
+                                </div>
+                            </div>
                             
                             {% if listing.description %}
-                            <hr>
-                            <h6>Description</h6>
-                            <p>{{ listing.description }}</p>
-                            {% endif %}
-                        </div>
-                        <div class="col-md-6">
-                            <h6>Pickup Information</h6>
-                            <p><strong>Donor:</strong> {{ listing.donor.organization or listing.donor.username }}</p>
-                            {% if listing.donor.average_rating %}
-                            <p>
-                                <strong>Rating:</strong>
-                                <span class="text-warning">
-                                    {% for i in range(listing.donor.average_rating|round|int) %}
-                                        <i class="bi bi-star-fill"></i>
-                                    {% endfor %}
-                                    {% if listing.donor.average_rating < listing.donor.average_rating|round|int %}
-                                        <i class="bi bi-star-half"></i>
-                                    {% endif %}
-                                    {{ listing.donor.average_rating|round(1) }}
-                                </span>
-                                <small class="text-muted">({{ listing.donor.total_reviews }} reviews)</small>
-                            </p>
-                            {% endif %}
-                            <p><strong>Location:</strong> {{ listing.location }}</p>
-                            <p><strong>Address:</strong> {{ listing.pickup_address or listing.location }}</p>
-                            
-                            <!-- Map Display -->
-                            {% if listing.latitude and listing.longitude %}
-                            <div class="mb-3">
-                                <h6>Location Map</h6>
-                                <div id="map{{ listing.id }}" style="height: 200px; width: 100%; border-radius: 8px;" 
-                                     data-lat="{{ listing.latitude }}" data-lon="{{ listing.longitude }}"></div>
-                                <small class="text-muted">
-                                    <a href="https://www.google.com/maps/search/?api=1&query={{ listing.latitude }},{{ listing.longitude }}" 
-                                       target="_blank" class="text-decoration-none">
-                                        <i class="bi bi-map"></i> Get Directions
-                                    </a>
-                                </small>
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <h6 class="mb-0"><i class="bi bi-card-text"></i> Description</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-0">{{ listing.description }}</p>
+                                </div>
                             </div>
                             {% endif %}
-                            <p><strong>Pickup Window:</strong><br>
-                                <i class="bi bi-clock"></i> {{ listing.pickup_start.strftime('%I:%M %p') }} - {{ listing.pickup_end.strftime('%I:%M %p') }}<br>
-                                <i class="bi bi-calendar"></i> {{ listing.pickup_start.strftime('%B %d, %Y') }}
-                            </p>
-                            <hr>
-                            <h6>Contact Information</h6>
-                            <p>
-                                <i class="bi bi-person"></i> {{ listing.donor.username }}<br>
-                                {% if listing.donor.phone %}
-                                <i class="bi bi-telephone"></i> {{ listing.donor.phone }}<br>
-                                {% endif %}
-                                <i class="bi bi-envelope"></i> {{ listing.donor.email }}
-                            </p>
+                            
+                            <div class="card mb-3">
+                                <div class="card-header bg-info bg-opacity-10">
+                                    <h6 class="mb-0"><i class="bi bi-clock"></i> Pickup Window</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-1"><strong>Time:</strong> {{ listing.pickup_start.strftime('%I:%M %p') }} - {{ listing.pickup_end.strftime('%I:%M %p') }}</p>
+                                    <p class="mb-0"><strong>Date:</strong> {{ listing.pickup_start.strftime('%B %d, %Y') }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Right Column: Pickup & Contact Info -->
+                        <div class="col-md-8">
+                            <div class="card mb-3">
+                                <div class="card-header bg-primary bg-opacity-10">
+                                    <h6 class="mb-0"><i class="bi bi-geo-alt"></i> Pickup Information</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="mb-1"><strong>Donor:</strong> {{ listing.donor.organization or listing.donor.username }}</p>
+                                    {% if listing.donor.average_rating %}
+                                    <p class="mb-1">
+                                        <strong>Rating:</strong>
+                                        <span class="text-warning">
+                                            {% for i in range(listing.donor.average_rating|round|int) %}
+                                                <i class="bi bi-star-fill"></i>
+                                            {% endfor %}
+                                            {% if listing.donor.average_rating < listing.donor.average_rating|round|int %}
+                                                <i class="bi bi-star-half"></i>
+                                            {% endif %}
+                                            {{ listing.donor.average_rating|round(1) }}
+                                        </span>
+                                        <small class="text-muted">({{ listing.donor.total_reviews }} reviews)</small>
+                                    </p>
+                                    {% endif %}
+                                    <p class="mb-1"><strong>Location:</strong> {{ listing.location }}</p>
+                                    <p class="mb-0"><strong>Address:</strong> {{ listing.pickup_address or listing.location }}</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Location Map -->
+                            {% if listing.latitude and listing.longitude %}
+                            <div class="card mb-3">
+                                <div class="card-header bg-success bg-opacity-10">
+                                    <h6 class="mb-0"><i class="bi bi-map"></i> Location Map</h6>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div id="map{{ listing.id }}" style="height: 300px; width: 100%; border-radius: 0 0 8px 8px;" 
+                                         data-lat="{{ listing.latitude }}" data-lon="{{ listing.longitude }}"></div>
+                                </div>
+                                <div class="card-footer bg-light">
+                                    <a href="https://www.google.com/maps/search/?api=1&query={{ listing.latitude }},{{ listing.longitude }}" 
+                                       target="_blank" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-map"></i> Get Directions
+                                    </a>
+                                    <small class="text-muted ms-2">Map powered by Leaflet | © OpenStreetMap contributors</small>
+                                </div>
+                            </div>
+                            {% endif %}
+                            
+                            <div class="card mb-3">
+                                <div class="card-header bg-secondary bg-opacity-10">
+                                    <h6 class="mb-0"><i class="bi bi-person-lines-fill"></i> Contact Information</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <p class="mb-1"><strong>Name:</strong> {{ listing.donor.username }}</p>
+                                            {% if listing.donor.phone %}
+                                            <p class="mb-1"><strong>Phone:</strong> {{ listing.donor.phone }}</p>
+                                            {% endif %}
+                                        </div>
+                                        <div class="col-md-6">
+                                            <p class="mb-0"><strong>Email:</strong> {{ listing.donor.email }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -374,6 +552,9 @@
             }
         });
         document.getElementById('expiringCount').textContent = expiringCount;
+        
+        // Initialize locations map
+        initializeLocationsMap();
     });
 
     // Filter functionality
@@ -461,8 +642,17 @@
                 attribution: '© OpenStreetMap contributors'
             }).addTo(map);
             
-            L.marker([lat, lon]).addTo(map)
-                .bindPopup('Pickup Location')
+            // Custom marker icon
+            const pickupIcon = L.divIcon({
+                className: 'custom-marker',
+                html: '<div style="background-color: #ffc107; width: 30px; height: 30px; border-radius: 50%; border: 3px solid #000; display: flex; align-items: center; justify-content: center;"><i class="bi bi-geo-alt-fill" style="color: #000; font-size: 16px;"></i></div>',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15],
+                popupAnchor: [0, -15]
+            });
+            
+            L.marker([lat, lon], {icon: pickupIcon}).addTo(map)
+                .bindPopup('<div style="text-align: center;"><strong>Pickup Location</strong><br><small>Click "Get Directions" for navigation</small></div>')
                 .openPopup();
             
             mapElement.setAttribute('data-map-initialized', 'true');
@@ -488,7 +678,7 @@
                 if (!isNaN(lat) && !isNaN(lon)) {
                     setTimeout(() => {
                         initializeMap(parseInt(listingId), lat, lon);
-                    }, 100);
+                    }, 200);
                 }
             }
         }
@@ -507,5 +697,78 @@
                 }
             });
     }, 30000);
+    
+    // Initialize locations map with all food listings
+    function initializeLocationsMap() {
+        const mapElement = document.getElementById('locationsMap');
+        if (!mapElement) return;
+        
+        // Collect all food listing coordinates
+        const listings = [];
+        document.querySelectorAll('.food-item').forEach(item => {
+            const listingId = item.getAttribute('data-listing-id');
+            const lat = parseFloat(item.getAttribute('data-lat'));
+            const lon = parseFloat(item.getAttribute('data-lon'));
+            const title = item.getAttribute('data-title');
+            const location = item.getAttribute('data-location');
+            const address = item.getAttribute('data-address');
+            const quantity = item.getAttribute('data-quantity');
+            
+            if (!isNaN(lat) && !isNaN(lon)) {
+                listings.push({
+                    id: listingId,
+                    lat: lat,
+                    lon: lon,
+                    title: title,
+                    location: location,
+                    address: address,
+                    quantity: quantity
+                });
+            }
+        });
+        
+        if (listings.length === 0) {
+            mapElement.innerHTML = '<div class="alert alert-info text-center py-5">No location data available for current listings</div>';
+            return;
+        }
+        
+        // Initialize map centered on first listing or India center
+        const centerLat = listings[0].lat;
+        const centerLon = listings[0].lon;
+        const map = L.map('locationsMap').setView([centerLat, centerLon], 12);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        
+        // Add markers for each listing
+        listings.forEach(listing => {
+            const marker = L.marker([listing.lat, listing.lon]).addTo(map);
+            
+            // Create popup with food details
+            const popupContent = `
+                <div style="min-width: 200px;">
+                    <h6 style="margin: 0 0 8px 0;">${listing.title}</h6>
+                    <p style="margin: 4px 0;"><strong>Location:</strong> ${listing.location}</p>
+                    <p style="margin: 4px 0;"><strong>Address:</strong> ${listing.address}</p>
+                    <p style="margin: 4px 0;"><strong>Quantity:</strong> ${listing.quantity} meals</p>
+                    <a href="https://www.google.com/maps/search/?api=1&query=${listing.lat},${listing.lon}" 
+                       target="_blank" style="display: inline-block; margin-top: 8px; padding: 4px 8px; background: #ffc107; color: #000; text-decoration: none; border-radius: 4px; font-size: 12px;">
+                        Get Directions
+                    </a>
+                </div>
+            `;
+            
+            marker.bindPopup(popupContent);
+        });
+        
+        // Fit map to show all markers
+        if (listings.length > 1) {
+            const group = new L.featureGroup(listings.map(l => L.marker([l.lat, l.lon])));
+            map.fitBounds(group.getBounds().pad(0.1));
+        }
+    }
 </script>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 {% endblock %}

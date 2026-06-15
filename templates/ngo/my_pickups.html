@@ -140,7 +140,7 @@
     {% set minutes_left = ((claim.food_listing.pickup_end - datetime.utcnow()).total_seconds() / 60)|round|int %}
     <div class="col-md-6 col-lg-4 mb-4 pickup-item" 
          data-claim-id="{{ claim.id }}"
-         data-expiry="{{ minutes_left }}"
+         data-expiry-time="{{ claim.food_listing.pickup_end.isoformat() }}"
          data-status="{{ claim.status }}">
         <div class="card h-100 pickup-card {% if hours_left < 2 %}urgent-pickup{% endif %}">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -178,7 +178,11 @@
                          data-lon="{{ claim.food_listing.longitude }}">
                     </div>
                     <div class="d-grid gap-2">
-                        <button class="directions-btn" onclick="getDirections({{ claim.food_listing.latitude }}, {{ claim.food_listing.longitude }}, '{{ claim.food_listing.location|replace("'", "\'") }}')">
+                        <button class="directions-btn" 
+                                data-lat="{{ claim.food_listing.latitude or '' }}" 
+                                data-lon="{{ claim.food_listing.longitude or '' }}"
+                                data-location="{{ claim.food_listing.location }}"
+                                onclick="getDirectionsFromButton(this)">
                             <i class="bi bi-navigation"></i> Get Directions
                         </button>
                     </div>
@@ -236,12 +240,15 @@
                         <i class="bi bi-check2"></i> Confirm Pickup
                     </button>
                     {% elif claim.status == 'confirmed' %}
-                    <button class="btn btn-outline-secondary" onclick="viewDetails({{ claim.id }})">
+                    <button class="btn btn-outline-secondary" disabled title="View details feature coming soon">
                         <i class="bi bi-info-circle"></i> View Details
                     </button>
                     {% endif %}
                     
-                    <button class="btn btn-outline-primary" onclick="showMap({{ claim.food_listing.latitude }}, {{ claim.food_listing.longitude }})">
+                    <button class="btn btn-outline-primary" 
+                            data-lat="{{ claim.food_listing.latitude or '' }}" 
+                            data-lon="{{ claim.food_listing.longitude or '' }}"
+                            onclick="showMapFromButton(this)">
                         <i class="bi bi-map"></i> Get Directions
                     </button>
                     
@@ -341,16 +348,29 @@ function getDirections(lat, lon, location) {
     window.open(url, '_blank');
 }
 
+// Get directions from button data attributes
+function getDirectionsFromButton(button) {
+    const lat = parseFloat(button.getAttribute('data-lat'));
+    const lon = parseFloat(button.getAttribute('data-lon'));
+    const location = button.getAttribute('data-location');
+    
+    if (lat && lon) {
+        getDirections(lat, lon, location);
+    } else {
+        alert('Location coordinates not available.');
+    }
+}
+
 // Countdown timer functionality
 function updateCountdowns() {
     document.querySelectorAll('.pickup-item').forEach(item => {
         const claimId = item.getAttribute('data-claim-id');
-        const expiryMinutes = parseInt(item.getAttribute('data-expiry'));
+        const expiryTimeStr = item.getAttribute('data-expiry-time');
         const countdownElement = document.getElementById(`countdown-${claimId}`);
         
-        if (countdownElement && expiryMinutes > 0) {
+        if (countdownElement && expiryTimeStr) {
             const now = new Date();
-            const expiryTime = new Date(now.getTime() + expiryMinutes * 60000);
+            const expiryTime = new Date(expiryTimeStr);
             const timeDiff = expiryTime - now;
             
             if (timeDiff > 0) {
@@ -466,6 +486,18 @@ function viewDetails(claimId) {
 function showMap(lat, lon) {
     if (lat && lon) {
         window.open(`https://www.google.com/maps/search/?api=1&query=${lat},${lon}`, '_blank');
+    } else {
+        alert('Location coordinates not available.');
+    }
+}
+
+// Show map from button data attributes
+function showMapFromButton(button) {
+    const lat = parseFloat(button.getAttribute('data-lat'));
+    const lon = parseFloat(button.getAttribute('data-lon'));
+    
+    if (lat && lon) {
+        showMap(lat, lon);
     } else {
         alert('Location coordinates not available.');
     }
