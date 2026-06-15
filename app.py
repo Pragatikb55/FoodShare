@@ -435,6 +435,14 @@ def register():
         errors = []
         if password != confirm_password:
             errors.append('Passwords do not match')
+        if len(password) < 8:
+            errors.append('Password must be at least 8 characters long')
+        if not any(c.isupper() for c in password):
+            errors.append('Password must contain at least 1 uppercase letter')
+        if not any(c.isdigit() or not c.isalnum() for c in password):
+            errors.append('Password must contain at least 1 number or special character')
+        if phone and (not phone.isdigit() or len(phone) != 10):
+            errors.append('Phone number must be exactly 10 digits')
         if User.query.filter_by(email=email).first():
             errors.append('Email already registered')
         if User.query.filter_by(username=username).first():
@@ -616,12 +624,17 @@ def profile():
         current_user.username = request.form.get('username')
         current_user.email = request.form.get('email')
         
+        errors = []
+        
         # Update role-specific profile
         if current_user.role == 'donor':
             donor_profile = current_user.donor_profile
             if donor_profile:
+                phone = request.form.get('phone')
+                if phone and (not phone.isdigit() or len(phone) != 10):
+                    errors.append('Phone number must be exactly 10 digits')
                 donor_profile.organization = request.form.get('organization')
-                donor_profile.phone = request.form.get('phone')
+                donor_profile.phone = phone
                 donor_profile.address = request.form.get('address')
                 donor_profile.city = request.form.get('city')
                 donor_profile.state = request.form.get('state')
@@ -631,17 +644,22 @@ def profile():
         elif current_user.role == 'ngo':
             ngo_profile = current_user.ngo_profile
             if ngo_profile:
+                phone = request.form.get('phone')
+                if phone and (not phone.isdigit() or len(phone) != 10):
+                    errors.append('Phone number must be exactly 10 digits')
                 ngo_profile.organization = request.form.get('organization')
-                ngo_profile.phone = request.form.get('phone')
+                ngo_profile.phone = phone
                 ngo_profile.address = request.form.get('address')
                 ngo_profile.city = request.form.get('city')
                 ngo_profile.state = request.form.get('state')
                 ngo_profile.zip_code = request.form.get('zip_code')
                 ngo_profile.latitude = float(request.form.get('latitude', 0)) if request.form.get('latitude') else None
                 ngo_profile.longitude = float(request.form.get('longitude', 0)) if request.form.get('longitude') else None
-                ngo_profile.registration_number = request.form.get('registration_number')
-                ngo_profile.ngo_type = request.form.get('ngo_type')
-                ngo_profile.capacity = int(request.form.get('capacity', 0)) if request.form.get('capacity') else None
+        
+        if errors:
+            for error in errors:
+                flash(error, 'danger')
+            return render_template('profile.html', user=current_user)
         
         # Handle profile picture with image resizing
         if 'profile_pic' in request.files:
@@ -668,6 +686,20 @@ def profile():
 def change_password():
     old = request.form.get('old_password')
     new = request.form.get('new_password')
+    
+    errors = []
+    if len(new) < 8:
+        errors.append('Password must be at least 8 characters long')
+    if not any(c.isupper() for c in new):
+        errors.append('Password must contain at least 1 uppercase letter')
+    if not any(c.isdigit() or not c.isalnum() for c in new):
+        errors.append('Password must contain at least 1 number or special character')
+    
+    if errors:
+        for error in errors:
+            flash(error, 'danger')
+        return redirect(url_for('profile'))
+    
     if current_user.check_password(old):
         current_user.set_password(new)
         db.session.commit()
